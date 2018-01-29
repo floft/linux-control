@@ -1,4 +1,5 @@
 import os
+import json
 import secrets
 import string
 import tormysql
@@ -10,7 +11,9 @@ import tornado.options
 import tornado.websocket
 import tornado.httpserver
 
+from tornado_http_auth import BasicAuthMixin
 from tornado.options import define, options
+from pywakeonlan.wakeonlan import send_magic_packet
 
 define("port", default=8888, help="run on the given port", type=int)
 define("debug", default=False, help="run in debug mode")
@@ -19,6 +22,8 @@ define("mysql_database", default="linuxcontrol", help="database name")
 define("mysql_user", default="linuxcontrol", help="database user")
 define("mysql_password", default="linuxcontrol", help="database password")
 
+# For DialogFlow
+credentials = { os.environ['HTTP_AUTH_USER']: os.environ['HTTP_AUTH_PASS'] }
 
 def genToken(N=30):
     """
@@ -138,6 +143,68 @@ class MainHandler(BaseHandler):
         #</script>
         #""")
 
+class DialogFlowHandler(BasicAuthMixin, BaseHandler):
+    def check_xsrf_cookie(self):
+        """
+        Disable check since the client won't be sending cookies
+        """
+        return True
+
+    def prepare(self):
+        self.get_authenticated_user(check_credentials_func=credentials.get, realm='Protected')
+
+    def get(self):
+        self.write("This is meant to be a webhook for DialogFlow")
+
+    def post(self):
+        data = json.loads(self.request.body.decode('utf-8'))
+        print(data)
+
+        # Skip if already answered, e.g. saying "Hi!" will be fulfilled by "Small Talk"
+        if 'fulfillmentText' in data['queryResult']:
+            self.write(json.dumps({}))
+            self.set_header("Content-type", "application/json")
+            return
+
+        response="Sorry, I'm not sure how to answer that."
+
+        # Determine command/query and respond appropriately
+        try:
+            intent = data['queryResult']['intent']['displayName']
+            params = data['queryResult']['parameters']
+
+            if intent == "Computer Command":
+                command = params['Command']
+                computer = params['Computer']
+                x = params['X']
+                url = params['url']
+
+                # Only command we handle is the WOL packet
+                if command == "power on":
+                    if computer:
+                        mac = self.get_wol_mac(email, computer)
+                        send_magic_packet(mac, port=9)
+                        response = "Woke your "+computer
+                else:
+                    response = "Will forward command to "+computer
+            elif intent == "Computer Query":
+                value = params['Value']
+                x = params['X']
+                computer = params['Computer']
+
+                response = "Will forward query to "+computer
+        except KeyError:
+            pass
+
+        #"source": string,
+        #"payload": { },
+        #"outputContexts": [ { object(Context) } ],
+        #"followupEventInput": { object(EventInput) },
+        #"fulfillmentMessages": [ { response } ],
+        json_response = json.dumps({ "fulfillmentText": response })
+        self.write(json_response)
+        self.set_header("Content-type", "application/json")
+
 class ClientConnection(BaseHandler,
         tornado.websocket.WebSocketHandler):
     @tornado.gen.coroutine
@@ -185,6 +252,7 @@ class Application(tornado.web.Application):
     def __init__(self):
         handlers = [
             (r"/linux-control", MainHandler),
+            (r"/linux-control/dialogflow", DialogFlowHandler),
             (r"/linux-control/auth/login", GoogleOAuth2LoginHandler),
             (r"/linux-control/auth/logout", LogoutHandler),
             (r"/linux-control/con", ClientConnection)

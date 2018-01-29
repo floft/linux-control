@@ -1,5 +1,4 @@
 import os
-#import urllib.parse
 import tornado.gen
 import tornado.ioloop
 import tornado.websocket
@@ -12,13 +11,6 @@ def main():
     assert "TOKEN" in os.environ, "Must define TOKEN"+\
         "environment variable, get from https://wopto.net:42770/linux-control"
 
-    """
-    request = tornado.httpclient.HTTPRequest(
-            "wss://wopto.net:42770/linux-control/con",
-            method='POST',
-            body=urllib.parse.urlencode({'token': os.environ['TOKEN']}))
-    conn = yield tornado.websocket.websocket_connect(request)
-    """
     url = "wss://wopto.net:42770/linux-control/con?"+\
             "email="+url_escape(os.environ['EMAIL'])+\
             "&token="+url_escape(os.environ['TOKEN'])

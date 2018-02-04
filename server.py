@@ -182,17 +182,29 @@ class DialogFlowHandler(BasicAuthMixin, BaseHandler):
                 # Only command we handle is the WOL packet
                 if command == "power on":
                     if computer:
+                        # TODO this requires
+                        #   - using Oauth2 or implicity authentication within Google Assistant, i.e.
+                        #     so we know who the user is
+                        #   - let them set this MAC in the web interface
                         mac = self.get_wol_mac(email, computer)
                         send_magic_packet(mac, port=9)
                         response = "Woke your "+computer
                 else:
                     response = "Will forward command to "+computer
+                    # TODO look up websocket for this connection, if it doesn't
+                    # exist say computer not online, otherwise forward and wait
+                    # for response
+                    #
+                    # If this takes too long, then immediately respond "Command sent to laptop"
+                    # and then do this: https://productforums.google.com/forum/#!topic/dialogflow/HeXqMLQs6ok;context-place=forum/dialogflow
+                    # saving context and later returning response or something
             elif intent == "Computer Query":
                 value = params['Value']
                 x = params['X']
                 computer = params['Computer']
 
                 response = "Will forward query to "+computer
+                # TODO same as above... forward to computer if online
         except KeyError:
             pass
 
@@ -239,6 +251,9 @@ class ClientConnection(BaseHandler,
     def open(self):
         user_id, laptop = yield self.get_current_user()
         print("WebSocket opened by", user_id, "for " + "laptop" if laptop else "desktop")
+
+        # TODO save this?
+        # https://stackoverflow.com/questions/21929315/keeping-a-list-of-websocket-connections-in-tornado
 
     @tornado.gen.coroutine
     def on_message(self, message):

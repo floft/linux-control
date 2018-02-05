@@ -140,6 +140,7 @@ class BaseHandler(tornado.web.RequestHandler):
     @tornado.gen.coroutine
     def getUserIDFromToken(self, token):
         userid = None
+        # TODO really should use async redis here or use tornado.gen.Task?
         result = self.redis.get("oauth2_"+token)
 
         if result:
@@ -361,9 +362,9 @@ class OAuth2BaseHandler(tornado.web.RequestHandler):
             self.set_status(401)
             self.finish(json.dumps({'error': str(err)}))
 
-class FooHandler(OAuth2BaseHandler):
-    def get(self):
-        self.finish(json.dumps({'msg': 'This is Foo!'}))
+#class FooHandler(OAuth2BaseHandler):
+#    def get(self):
+#        self.finish(json.dumps({'msg': 'This is Foo!'}))
 
 class LogoutHandler(BaseHandler):
     def get(self):
@@ -703,7 +704,7 @@ class Application(tornado.web.Application):
             (r"/linux-control/con", ClientConnection),
             (self.auth_controller.authorize_path, OAuth2Handler, dict(provider=self.auth_controller)),
             (self.auth_controller.token_path, OAuth2Handler, dict(provider=self.auth_controller)),
-            (r"/linux-control/foo", FooHandler, dict(provider=self.auth_controller))
+            #(r"/linux-control/foo", FooHandler, dict(provider=self.auth_controller))
         ]
         settings = dict(
             cookie_secret=os.environ['COOKIE_SECRET'],
@@ -718,7 +719,6 @@ class Application(tornado.web.Application):
         super(Application, self).__init__(handlers, **settings)
 
     def __del__(self):
-        self.dbcon.close()
         self.pool.close()
 
     @tornado.gen.coroutine

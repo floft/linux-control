@@ -540,10 +540,6 @@ class DialogFlowHandler(BasicAuthMixin, BaseHandler):
                 # Only command we handle is the WOL packet
                 if command == "power on":
                     if computer:
-                        # TODO this requires
-                        #   - using Oauth2 or implicity authentication within Google Assistant, i.e.
-                        #     so we know who the user is
-                        #   - let them set this MAC in the web interface
                         mac = yield self.get_wol_mac(userid, computer)
                         send_magic_packet(mac, port=9)
                         response = "Woke your "+computer

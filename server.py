@@ -1,10 +1,9 @@
 import os
 import json
+import redis
 import secrets
 import string
 import tormysql
-import pymysql # not async
-import pymysql.cursors # not async
 import traceback
 import tornado.web
 import tornado.template
@@ -17,7 +16,7 @@ import tornado.httpserver
 import oauth2.grant
 import oauth2.web.tornado
 import oauth2.tokengenerator
-import oauth2.store.dbapi.mysql
+import oauth2.store.redisdb
 
 from tornado_http_auth import BasicAuthMixin
 from tornado.options import define, options
@@ -26,6 +25,10 @@ from oauth2.web import AuthorizationCodeGrantSiteAdapter
 
 define("port", default=8888, help="run on the given port", type=int)
 define("debug", default=False, help="run in debug mode")
+# For OAuth2 data
+define("redis_host", default="127.0.0.1", help="database host")
+define("redis_port", default="6379", help="database port")
+# For Linux Control data
 define("mysql_host", default="127.0.0.1", help="database host")
 define("mysql_database", default="linuxcontrol", help="database name")
 define("mysql_user", default="linuxcontrol", help="database user")
@@ -49,8 +52,12 @@ class BaseHandler(tornado.web.RequestHandler):
     def pool(self):
         return self.application.pool
 
+    @property
+    def redis(self):
+        return self.application.redis
+
     def get_current_user(self):
-        return self.get_secure_cookie('id')
+        return self.get_secure_cookie('id').decode("utf-8")
 
     def render_from_string(self, tmpl, **kwargs):
         """
@@ -133,15 +140,13 @@ class BaseHandler(tornado.web.RequestHandler):
     @tornado.gen.coroutine
     def getUserIDFromToken(self, token):
         userid = None
+        result = self.redis.get("oauth2_"+token)
 
-        with (yield self.pool.Connection()) as conn:
-            with conn.cursor() as cursor:
-                yield cursor.execute("SELECT user_id FROM "+\
-                        "access_tokens WHERE token=%s", (token))
-                data = cursor.fetchone()
+        if result:
+            result = json.loads(result.decode("utf-8"))
 
-                if data and len(data) == 1:
-                    userid = data[0]
+            if "token" in result and "user_id" in result and result["token"] == token:
+                userid = result["user_id"]
 
         return userid
 
@@ -369,7 +374,7 @@ class LogoutHandler(BaseHandler):
 
 class MainHandler(BaseHandler):
     def get(self):
-        userid = self.get_secure_cookie('id')
+        userid = self.get_secure_cookie('id').decode("utf-8")
 
         # If already logged in, forward to the account page
         if userid: 
@@ -428,8 +433,8 @@ class AccountHandler(BaseHandler):
     @tornado.gen.coroutine
     @tornado.web.authenticated
     def get(self):
-        userid = self.get_secure_cookie('id')
-        email = self.get_secure_cookie('email')
+        userid = self.get_secure_cookie('id').decode("utf-8")
+        email = self.get_secure_cookie('email').decode("utf-8")
 
         # Check that this user is in the database and there are tokens for the
         # laptop and desktop computers
@@ -447,7 +452,7 @@ class AccountHandler(BaseHandler):
             desktop_mac = ""
 
         self.write(self.render_from_string(self.TEMPLATE,
-            email=tornado.escape.xhtml_escape(email.decode("utf-8")),
+            email=tornado.escape.xhtml_escape(email),
             laptop_token=laptop_token,
             desktop_token=desktop_token,
             laptop_mac=laptop_mac,
@@ -637,29 +642,32 @@ class Application(tornado.web.Application):
             db = options.mysql_database,
             charset = "utf8"
         )
-        #self.dbcon = Connection(self.pool) # Needed for OAuth2
-        # TODO this is bad... not syncronous...
-        # Maybe: http://blog.trukhanov.net/Running-synchronous-code-on-tornado-asynchronously/
-        # Also TODO this will drop the MySQL connection after a while
-        #   pymysql.err.OperationalError: (2006, "MySQL server has gone away (BrokenPipeError(32, 'Broken pipe'))")
-        self.dbcon = pymysql.connect(
-            host = options.mysql_host,
-            user = options.mysql_user,
-            password = options.mysql_password,
-            db = options.mysql_database,
-            charset = "utf8",
-            #cursorclass = pymysql.cursors.DictCursor
-        )
+        self.redis = redis.StrictRedis(host=options.redis_host, port=options.redis_port, db=0)
 
-        # TODO maybe use tornado.ioloop.IOLoop.current().spawn_callback(self.maybe_create_tables) here?
         self.maybe_create_tables()
 
         #
         # OAuth2 provider
         #
-        client_store = oauth2.store.dbapi.mysql.MysqlClientStore(self.dbcon)
-        auth_code_store = oauth2.store.dbapi.mysql.MysqlAuthCodeStore(self.dbcon)
-        token_store = oauth2.store.dbapi.mysql.MysqlAccessTokenStore(self.dbcon)
+        token_store = oauth2.store.redisdb.TokenStore(
+            host=options.redis_host, port=options.redis_port, db=0, prefix="oauth2")
+        client_store = oauth2.store.redisdb.ClientStore(
+            host=options.redis_host, port=options.redis_port, db=0, prefix="oauth2")
+
+        # Allow Google Assistant to request access
+        client_store.add_client(
+            client_id=os.environ['OAUTH_GOOGLE_ID'],
+            client_secret=os.environ['OAUTH_GOOGLE_SECRET'],
+            redirect_uris=[
+                os.environ['OAUTH_GOOGLE_URI'],
+                "https://developers.google.com/oauthplayground" # For debugging
+            ],
+            authorized_grants=[
+                oauth2.grant.AuthorizationCodeGrant.grant_type,
+                oauth2.grant.RefreshToken.grant_type
+            ],
+            authorized_response_types=["code"]
+        )
 
         # Generator of tokens
         token_generator = oauth2.tokengenerator.Uuid4()
@@ -667,7 +675,7 @@ class Application(tornado.web.Application):
         # OAuth2 controller
         self.auth_controller = oauth2.Provider(
             access_token_store=token_store,
-            auth_code_store=auth_code_store,
+            auth_code_store=token_store,
             client_store=client_store,
             token_generator=token_generator
         )
@@ -676,9 +684,11 @@ class Application(tornado.web.Application):
 
         # Add Client Credentials to OAuth2 controller
         self.site_adapter = OAuth2SiteAdapter()
-        self.auth_controller.add_grant(oauth2.grant.AuthorizationCodeGrant(expires_in=24*3600, site_adapter=self.site_adapter)) # 1 day
+        self.auth_controller.add_grant(oauth2.grant.AuthorizationCodeGrant(
+            expires_in=86400, site_adapter=self.site_adapter)) # 1 day
         # Add refresh token capability and set expiration time of access tokens to 30 days
-        self.auth_controller.add_grant(oauth2.grant.RefreshToken(expires_in=2592000, reissue_refresh_tokens=True))
+        self.auth_controller.add_grant(oauth2.grant.RefreshToken(
+            expires_in=2592000, reissue_refresh_tokens=True))
 
         #
         # Tornado
@@ -729,130 +739,6 @@ class Application(tornado.web.Application):
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin
                     AUTO_INCREMENT=1 ;
                     """)
-
-                    yield cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS `access_tokens` (
-                      `id` INT NOT NULL AUTO_INCREMENT COMMENT 'Unique identifier',
-                      `client_id` VARCHAR(32) NOT NULL COMMENT 'The identifier of a client. Assuming it is an arbitrary text which is a maximum of 32 characters long.',
-                      `grant_type` ENUM('authorization_code', 'implicit', 'password', 'client_credentials', 'refresh_token') NOT NULL COMMENT 'The type of a grant for which a token has been issued.',
-                      `token` CHAR(36) NOT NULL COMMENT 'The access token.',
-                      `expires_at` TIMESTAMP NULL COMMENT 'The timestamp at which the token expires.',
-                      `refresh_token` CHAR(36) NULL COMMENT 'The refresh token.',
-                      `refresh_expires_at` TIMESTAMP NULL COMMENT 'The timestamp at which the refresh token expires.',
-                      `user_id` INT NULL COMMENT 'The identifier of the user this token belongs to.',
-                      PRIMARY KEY (`id`),
-                      INDEX `fetch_by_refresh_token` (`refresh_token` ASC),
-                      INDEX `fetch_existing_token_of_user` (`client_id` ASC, `grant_type` ASC, `user_id` ASC))
-                    ENGINE = InnoDB;
-                    """)
-
-                    yield cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS `access_token_scopes` (
-                      `id` INT NOT NULL AUTO_INCREMENT,
-                      `name` VARCHAR(32) NOT NULL COMMENT 'The name of scope.',
-                      `access_token_id` INT NOT NULL COMMENT 'The unique identifier of the access token this scope belongs to.',
-                      PRIMARY KEY (`id`))
-                    ENGINE = InnoDB;
-                    """)
-
-                    yield cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS `access_token_data` (
-                      `id` INT NOT NULL AUTO_INCREMENT,
-                      `key` VARCHAR(32) NOT NULL COMMENT 'The key of an entry converted to the key in a Python dict.',
-                      `value` VARCHAR(32) NOT NULL COMMENT 'The value of an entry converted to the value in a Python dict.',
-                      `access_token_id` INT NOT NULL COMMENT 'The unique identifier of the access token a row  belongs to.',
-                      PRIMARY KEY (`id`))
-                    ENGINE = InnoDB;
-                    """)
-
-                    yield cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS `auth_codes` (
-                      `id` INT NOT NULL AUTO_INCREMENT,
-                      `client_id` VARCHAR(32) NOT NULL COMMENT 'The identifier of a client. Assuming it is an arbitrary text which is a maximum of 32 characters long.',
-                      `code` CHAR(36) NOT NULL COMMENT 'The authorisation code.',
-                      `expires_at` TIMESTAMP NOT NULL COMMENT 'The timestamp at which the token expires.',
-                      `redirect_uri` VARCHAR(128) NULL COMMENT 'The redirect URI send by the client during the request of an authorisation code.',
-                      `user_id` INT NULL COMMENT 'The identifier of the user this authorisation code belongs to.',
-                      PRIMARY KEY (`id`),
-                      INDEX `fetch_code` (`code` ASC))
-                    ENGINE = InnoDB;
-                    """)
-
-                    yield cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS `auth_code_data` (
-                      `id` INT NOT NULL AUTO_INCREMENT,
-                      `key` VARCHAR(32) NOT NULL COMMENT 'The key of an entry converted to the key in a Python dict.',
-                      `value` VARCHAR(32) NOT NULL COMMENT 'The value of an entry converted to the value in a Python dict.',
-                      `auth_code_id` INT NOT NULL COMMENT 'The identifier of the authorisation code that this row belongs to.',
-                      PRIMARY KEY (`id`))
-                    ENGINE = InnoDB;
-                    """)
-
-                    yield cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS `auth_code_scopes` (
-                      `id` INT NOT NULL AUTO_INCREMENT,
-                      `name` VARCHAR(32) NOT NULL,
-                      `auth_code_id` INT NOT NULL,
-                      PRIMARY KEY (`id`))
-                    ENGINE = InnoDB;
-                    """)
-
-                    yield cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS `clients` (
-                      `id` INT NOT NULL AUTO_INCREMENT,
-                      `identifier` VARCHAR(32) NOT NULL COMMENT 'The identifier of a client.',
-                      `secret` VARCHAR(32) NOT NULL COMMENT 'The secret of a client.',
-                      PRIMARY KEY (`id`))
-                    ENGINE = InnoDB;
-                    """)
-
-                    yield cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS `client_grants` (
-                      `id` INT NOT NULL AUTO_INCREMENT,
-                      `name` VARCHAR(32) NOT NULL,
-                      `client_id` INT NOT NULL COMMENT 'The id of the client a row belongs to.',
-                      PRIMARY KEY (`id`))
-                    ENGINE = InnoDB;
-                    """)
-
-                    yield cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS `client_redirect_uris` (
-                      `id` INT NOT NULL AUTO_INCREMENT,
-                      `redirect_uri` VARCHAR(128) NOT NULL COMMENT 'A URI of a client.',
-                      `client_id` INT NOT NULL COMMENT 'The id of the client a row belongs to.',
-                      PRIMARY KEY (`id`))
-                    ENGINE = InnoDB;
-                    """)
-
-                    yield cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS `client_response_types` (
-                      `id` INT NOT NULL AUTO_INCREMENT,
-                      `response_type` VARCHAR(32) NOT NULL COMMENT 'The response type that a client can use.',
-                      `client_id` INT NOT NULL COMMENT 'The id of the client a row belongs to.',
-                      PRIMARY KEY (`id`))
-                    ENGINE = InnoDB;
-                    """)
-
-                    # Note: whatever this secret is, you'll have to update the OAuth2 client secret in the Google Console
-                    yield cursor.execute(
-                        "INSERT IGNORE INTO clients(id, identifier, secret) "+\
-                        "VALUES(%s,%s,%s)", (1, "google-assistant", genToken()))
-                    yield cursor.execute(
-                        "INSERT IGNORE INTO client_grants(id, name, client_id) "+\
-                        "VALUES(%s,%s,%s)", (1, oauth2.grant.AuthorizationCodeGrant.grant_type, 1))
-                    yield cursor.execute(
-                        "INSERT IGNORE INTO client_grants(id, name, client_id) "+\
-                        "VALUES(%s,%s,%s)", (2, oauth2.grant.RefreshToken.grant_type, 1))
-                    yield cursor.execute(
-                        "INSERT IGNORE INTO client_redirect_uris(id, redirect_uri, client_id) "+\
-                        "VALUES(%s,%s,%s)", (1, "https://oauth-redirect.googleusercontent.com/r/linux-control", 1))
-                    yield cursor.execute(
-                        "INSERT IGNORE INTO client_redirect_uris(id, redirect_uri, client_id) "+\
-                        "VALUES(%s,%s,%s)", (2, "https://developers.google.com/oauthplayground", 1))
-                    yield cursor.execute(
-                        "INSERT IGNORE INTO client_response_types(id, response_type, client_id) "+\
-                        "VALUES(%s,%s,%s)", (1, "code", 1))
-
             except Exception:
                 yield conn.rollback()
                 print("Rolling back DB:", traceback.format_exc())
@@ -865,6 +751,8 @@ def main():
     assert 'COOKIE_SECRET' in os.environ, "Must define COOKIE_SECRET environment variable"
     assert 'OAUTH_CLIENT_ID' in os.environ, "Must define OAUTH_CLIENT_ID environment variable"
     assert 'OAUTH_CLIENT_SECRET' in os.environ, "Must define OAUTH_CLIENT_SECRET environment variable"
+    assert 'OAUTH_GOOGLE_SECRET' in os.environ, "Must define OAUTH_GOOGLE_SECRET environment variable"
+    assert 'OAUTH_GOOGLE_URI' in os.environ, "Must define OAUTH_GOOGLE_URI environment variable"
     assert 'HTTP_AUTH_USER' in os.environ, "Must define HTTP_AUTH_USER environment variable"
     assert 'HTTP_AUTH_PASS' in os.environ, "Must define HTTP_AUTH_PASS environment variable"
 

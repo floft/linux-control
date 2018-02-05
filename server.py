@@ -52,6 +52,14 @@ class BaseHandler(tornado.web.RequestHandler):
     def get_current_user(self):
         return self.get_secure_cookie('id')
 
+    def render_from_string(self, tmpl, **kwargs):
+        """
+        From: https://github.com/tornadoweb/tornado/issues/564
+        """
+        namespace = self.get_template_namespace()
+        namespace.update(kwargs)
+        return tornado.template.Template(tmpl).generate(**namespace)
+
     @tornado.gen.coroutine
     def get_tokens(self, email):
         """
@@ -71,6 +79,26 @@ class BaseHandler(tornado.web.RequestHandler):
                     desktop_token = data[1]
 
         return laptop_token, desktop_token
+
+    @tornado.gen.coroutine
+    def get_macs(self, userid):
+        """
+        Get MAC address for WOL packets
+        """
+        laptop_mac = None
+        desktop_mac = None
+
+        with (yield self.pool.Connection()) as conn:
+            with conn.cursor() as cursor:
+                yield cursor.execute("SELECT laptop_mac, desktop_mac FROM "+\
+                        "users WHERE id=%s", (userid))
+                data = cursor.fetchone()
+
+                if data and len(data) == 2:
+                    laptop_mac = data[0]
+                    desktop_mac = data[1]
+
+        return laptop_mac, desktop_mac
 
     @tornado.gen.coroutine
     def getUserID(self, email):
@@ -378,12 +406,19 @@ class AccountHandler(BaseHandler):
     <head><title>Linux Control</title></head>
     <body>
         <h1>Linux Control</h1>
+        <div>Logged in as: <i>{{ email }}</i></div>
 
-        <div>Logged in as: {email}</div>
-        <div>Laptop token: {laptop_token} (reset)</div>
-        <div>Desktop token: {desktop_token} (reset)</div>
+        <h2>Tokens</h2>
+        <div>Laptop token: {{ laptop_token }} (reset)</div>
+        <div>Desktop token: {{ desktop_token }} (reset)</div>
 
-        <div>Mac address for...</div>
+        <h2>Wake on LAN</h2>
+        <form method="POST">
+            Laptop MAC: <input type="text" name="laptop_mac" value="{{ laptop_mac }}" /><br />
+            Desktop MAC: <input type="text" name="desktop_mac" value="{{ desktop_mac }}" /><br />
+            <input type="submit" value="Save" />
+            {% module xsrf_form_html() %}
+        </form>
 
         <div><a href="/linux-control/auth/logout">Logout</a></div>
     </body>
@@ -393,17 +428,52 @@ class AccountHandler(BaseHandler):
     @tornado.gen.coroutine
     @tornado.web.authenticated
     def get(self):
+        userid = self.get_secure_cookie('id')
         email = self.get_secure_cookie('email')
 
         # Check that this user is in the database and there are tokens for the
         # laptop and desktop computers
         laptop_token, desktop_token = yield self.get_tokens(email)
+        laptop_mac, desktop_mac = yield self.get_macs(userid)
 
-        self.write(self.TEMPLATE.format(
-            email=email.decode("utf-8"),
+        if laptop_mac:
+            laptop_mac = tornado.escape.xhtml_escape(laptop_mac)
+        else:
+            laptop_mac = ""
+
+        if desktop_mac:
+            desktop_mac = tornado.escape.xhtml_escape(desktop_mac)
+        else:
+            desktop_mac = ""
+
+        self.write(self.render_from_string(self.TEMPLATE,
+            email=tornado.escape.xhtml_escape(email.decode("utf-8")),
             laptop_token=laptop_token,
-            desktop_token=desktop_token
+            desktop_token=desktop_token,
+            laptop_mac=laptop_mac,
+            desktop_mac=desktop_mac,
         ))
+
+    @tornado.gen.coroutine
+    @tornado.web.authenticated
+    def post(self):
+        userid = self.get_current_user()
+        laptop_mac = self.get_argument("laptop_mac", "")
+        desktop_mac = self.get_argument("desktop_mac", "")
+
+        with (yield self.pool.Connection()) as conn:
+            try:
+                with conn.cursor() as cursor:
+                    yield cursor.execute(
+                        "UPDATE users SET laptop_mac = %s, desktop_mac = %s WHERE id = %s",
+                        (laptop_mac, desktop_mac, userid))
+            except:
+                yield conn.rollback()
+                print("Rolling back DB:", traceback.format_exc())
+            else:
+                yield conn.commit()
+
+        self.redirect(self.request.uri)
 
 class DialogFlowHandler(BasicAuthMixin, BaseHandler):
     def check_xsrf_cookie(self):
@@ -417,6 +487,15 @@ class DialogFlowHandler(BasicAuthMixin, BaseHandler):
 
     def get(self):
         self.write("This is meant to be a webhook for DialogFlow")
+
+    @tornado.gen.coroutine
+    def get_wol_mac(self, userid, computer):
+        laptop_mac, desktop_mac = yield self.get_macs(userid)
+
+        if computer.strip().lower() == "laptop":
+            return laptop_mac
+        else:
+            return desktop_mac
 
     @tornado.gen.coroutine
     def post(self):
@@ -465,7 +544,7 @@ class DialogFlowHandler(BasicAuthMixin, BaseHandler):
                         #   - using Oauth2 or implicity authentication within Google Assistant, i.e.
                         #     so we know who the user is
                         #   - let them set this MAC in the web interface
-                        mac = self.get_wol_mac(email, computer)
+                        mac = yield self.get_wol_mac(userid, computer)
                         send_magic_packet(mac, port=9)
                         response = "Woke your "+computer
                 else:
@@ -641,6 +720,8 @@ class Application(tornado.web.Application):
                         `email` varchar(255) COLLATE utf8_bin NOT NULL,
                         `laptop_token` varchar(255) COLLATE utf8_bin NOT NULL,
                         `desktop_token` varchar(255) COLLATE utf8_bin NOT NULL,
+                        `laptop_mac` varchar(255) COLLATE utf8_bin,
+                        `desktop_mac` varchar(255) COLLATE utf8_bin,
                         PRIMARY KEY (`id`),
                         UNIQUE KEY (`email`)
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin

@@ -500,7 +500,6 @@ class DialogFlowHandler(BasicAuthMixin, BaseHandler):
     @tornado.gen.coroutine
     def post(self):
         data = json.loads(self.request.body.decode('utf-8'))
-        print(data)
 
         # Skip if already answered, e.g. saying "Hi!" will be fulfilled by "Small Talk"
         if 'fulfillmentText' in data['queryResult']:
@@ -520,6 +519,7 @@ class DialogFlowHandler(BasicAuthMixin, BaseHandler):
         userid = yield self.getUserIDFromToken(data['originalDetectIntentRequest']['payload']['user']['accessToken'])
 
         if not userid:
+            print("Error: Invalid access token - userid:", userid, "data:", data)
             self.write(json.dumps({ "fulfillmentText": "Invalid access token." }))
             self.set_header("Content-type", "application/json")
             return
@@ -541,8 +541,12 @@ class DialogFlowHandler(BasicAuthMixin, BaseHandler):
                 if command == "power on":
                     if computer:
                         mac = yield self.get_wol_mac(userid, computer)
-                        send_magic_packet(mac, port=9)
-                        response = "Woke your "+computer
+
+                        if mac:
+                            send_magic_packet(mac, port=9)
+                            response = "Woke your "+computer
+                        else:
+                            response = "Your "+computer+" is not set up for wake-on-LAN"
                 else:
                     response = "Will forward command to "+computer+" for user "+str(userid)
                     # TODO look up websocket for this connection, if it doesn't
@@ -624,7 +628,7 @@ class Application(tornado.web.Application):
         # Database
         #
         self.pool = tormysql.ConnectionPool(
-            max_connections = 10,
+            max_connections = 2,
             idle_seconds = 7200,
             wait_connection_timeout = 3,
             host = options.mysql_host,
@@ -635,6 +639,9 @@ class Application(tornado.web.Application):
         )
         #self.dbcon = Connection(self.pool) # Needed for OAuth2
         # TODO this is bad... not syncronous...
+        # Maybe: http://blog.trukhanov.net/Running-synchronous-code-on-tornado-asynchronously/
+        # Also TODO this will drop the MySQL connection after a while
+        #   pymysql.err.OperationalError: (2006, "MySQL server has gone away (BrokenPipeError(32, 'Broken pipe'))")
         self.dbcon = pymysql.connect(
             host = options.mysql_host,
             user = options.mysql_user,
@@ -656,7 +663,6 @@ class Application(tornado.web.Application):
 
         # Generator of tokens
         token_generator = oauth2.tokengenerator.Uuid4()
-        token_generator.expires_in[oauth2.grant.AuthorizationCodeGrant.grant_type] = 600 # 10 minutes
 
         # OAuth2 controller
         self.auth_controller = oauth2.Provider(
@@ -670,9 +676,9 @@ class Application(tornado.web.Application):
 
         # Add Client Credentials to OAuth2 controller
         self.site_adapter = OAuth2SiteAdapter()
-        self.auth_controller.add_grant(oauth2.grant.AuthorizationCodeGrant(site_adapter=self.site_adapter))
+        self.auth_controller.add_grant(oauth2.grant.AuthorizationCodeGrant(expires_in=24*3600, site_adapter=self.site_adapter)) # 1 day
         # Add refresh token capability and set expiration time of access tokens to 30 days
-        self.auth_controller.add_grant(oauth2.grant.RefreshToken(expires_in=2592000))
+        self.auth_controller.add_grant(oauth2.grant.RefreshToken(expires_in=2592000, reissue_refresh_tokens=True))
 
         #
         # Tornado

@@ -4,4 +4,5 @@ export ID=""
 # Get from logging in from a web browser
 export TOKEN=""
 
+cd /path/to/linux-control
 python3 -m client.main --debug

@@ -1,4 +1,5 @@
 import os
+import logging
 import traceback
 import tornado.ioloop
 import tornado.options
@@ -28,4 +29,7 @@ def main():
     tornado.ioloop.IOLoop.current().start()
 
 if __name__ == "__main__":
+    # For now, show info
+    logging.getLogger().setLevel(logging.INFO)
+
     main()

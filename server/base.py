@@ -182,8 +182,6 @@ class BaseHandler(tornado.web.RequestHandler):
         # Get user id, set to 0 if it doesn't exist
         userid = self.redis.incr("user_increment")
 
-        print("Userid:", userid)
-
         # Create user account
         self.redis.set("user_"+str(userid),
             json.dumps({

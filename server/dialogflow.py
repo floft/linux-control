@@ -1,4 +1,5 @@
 import json
+import logging
 import tornado.gen
 
 from tornado_http_auth import BasicAuthMixin
@@ -52,7 +53,7 @@ class DialogFlowHandler(BasicAuthMixin, BaseHandler):
         userid = yield self.getUserIDFromToken(data['originalDetectIntentRequest']['payload']['user']['accessToken'])
 
         if not userid:
-            print("Error: Invalid access token - userid:", userid, "data:", data)
+            logging.error("Invalid access token - userid: "+str(userid)+", data:"+str(data))
             self.write(json.dumps({ "fulfillmentText": "Invalid access token." }))
             self.set_header("Content-type", "application/json")
             return

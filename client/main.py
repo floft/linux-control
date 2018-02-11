@@ -1,5 +1,6 @@
 import os
 import json
+import logging
 import tornado.gen
 import tornado.ioloop
 import tornado.websocket
@@ -7,7 +8,7 @@ import tornado.httpclient
 from tornado.escape import url_escape
 
 class WSClient:
-    def __init__(self, url, ping_interval=60, ping_timeout=30):
+    def __init__(self, url, ping_interval=60, ping_timeout=60*3):
         self.url = url
         self.ping_interval = ping_interval
         self.ping_timeout = ping_timeout
@@ -15,8 +16,8 @@ class WSClient:
         self.ws = None
         self.connect()
 
-        # Keep connecting if it dies
-        tornado.ioloop.PeriodicCallback(self.keep_alive, 60000, io_loop=self.ioloop).start()
+        # Keep connecting if it dies, every 5 minutes
+        tornado.ioloop.PeriodicCallback(self.keep_alive, 300000, io_loop=self.ioloop).start()
 
         self.ioloop.start()
 
@@ -27,8 +28,9 @@ class WSClient:
                     ping_interval=self.ping_interval, # make sure we're still connected
                     ping_timeout=self.ping_timeout)
         except tornado.httpclient.HTTPError:
-            print("HTTP Error")
+            logging.error("HTTP error - could not connect to websocket")
         else:
+            logging.info("Connection opened")
             self.run()
 
     @tornado.gen.coroutine
@@ -38,27 +40,30 @@ class WSClient:
                 msg = yield self.ws.read_message()
 
                 if msg is None:
-                    print("Connection closed")
+                    logging.info("Connection closed")
                     self.ws = None
                     break
                 else:
                     msg = json.loads(msg)
 
                 if "error" in msg:
-                    print("Error:", msg["error"])
+                    logging.error(msg["error"])
                     break
                 elif "query" in msg:
-                    print("Query:", msg["query"])
+                    value = msg["query"]["value"]
+                    x = msg["query"]["x"]
                 elif "command" in msg:
-                    print("Command:", msg["command"])
+                    command = msg["command"]["command"]
+                    x = msg["command"]["x"]
+                    url = msg["command"]["url"]
                 else:
-                    print("Unknown message:", msg)
+                    logging.warning("Unknown message: " + str(msg))
         except KeyboardInterrupt:
             pass
 
     def keep_alive(self):
         if self.ws is None:
-            print("Reconnecting")
+            logging.info("Reconnecting")
             self.connect()
 
 if __name__ == "__main__":
@@ -68,5 +73,8 @@ if __name__ == "__main__":
     url = "wss://wopto.net:42770/linux-control/con?"+\
             "id="+url_escape(os.environ['ID'])+\
             "&token="+url_escape(os.environ['TOKEN'])
+
+    # For now, show info
+    logging.getLogger().setLevel(logging.INFO)
 
     client = WSClient(url)

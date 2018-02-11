@@ -2,6 +2,7 @@ import os
 import json
 import redis
 import GeoIP
+import logging
 import collections
 import tornado.web
 import tornado.httpclient
@@ -105,7 +106,7 @@ class Application(tornado.web.Application):
         ]
         settings = dict(
             websocket_ping_interval=60, # ping every minute
-            websocket_ping_timeout=30, # close connection if no pong
+            websocket_ping_timeout=60*3, # close connection if no pong
             cookie_secret=os.environ['COOKIE_SECRET'],
             xsrf_cookies=True,
             google_oauth={
@@ -122,11 +123,11 @@ class Application(tornado.web.Application):
         Callback for saving server ip
         """
         if response.error:
-            print("Error getting server IP:", response.error)
+            logging.error("Could not get server IP: "+str(response.error))
         else:
             data = json.loads(response.body)
 
             if "ip" in data:
                 self.serverIp = data["ip"]
-                print("Server IP:", self.serverIp)
+                logging.info("Server IP: "+str(self.serverIp))
 

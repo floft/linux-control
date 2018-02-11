@@ -1,4 +1,5 @@
 import json
+import logging
 import tornado.gen
 import tornado.ioloop
 import tornado.websocket
@@ -56,18 +57,18 @@ class ClientConnection(BaseHandler,
         if userid:
             self.ip = self.getIP()
             self.clients[userid][computer] = self # Note: overwrite previous socket from user
-            print("WebSocket opened by", userid, "for", computer, "on", self.ip)
+            logging.info("WebSocket opened by "+str(userid)+" for "+computer+" on "+self.ip)
         else:
-            print("WebSocket permission denied")
+            logging.warning("WebSocket permission denied")
 
     @tornado.gen.coroutine
     def on_message(self, message):
         userid, computer = yield self.get_current_user()
 
         if userid:
-            print("Got message:", message, "from", userid, "on", computer)
+            logging.info("Got message "+message+" from "+str(userid)+" on "+computer)
         else:
-            print("WebSocket message permission denied")
+            logging.warning("WebSocket message permission denied")
 
     def on_close(self):
         found = False
@@ -79,4 +80,7 @@ class ClientConnection(BaseHandler,
                     del self.clients[userid][computer]
                     break
 
-        print("WebSocket closed, did " + ("" if found else "not ") + "find in list of saved sockets")
+        logging.info("WebSocket closed, did " + ("" if found else "not ") + "find in list of saved sockets")
+
+    #def on_pong(self, data):
+    #    logging.info("Got pong")

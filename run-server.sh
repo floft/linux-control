@@ -12,4 +12,4 @@ export OAUTH_GOOGLE_URI="https://oauth-redirect.googleusercontent.com/r/YOUR-ACT
 export HTTP_AUTH_USER=""
 export HTTP_AUTH_PASS=""
 
-python3 server.py --debug
+python3 -m server.main --debug

@@ -4,4 +4,4 @@ export ID=""
 # Get from logging in from a web browser
 export TOKEN=""
 
-python3 client.py
+python3 -m client.main --debug

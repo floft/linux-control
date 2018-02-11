@@ -15,7 +15,9 @@ def main():
     url = "wss://wopto.net:42770/linux-control/con?"+\
             "id="+url_escape(os.environ['ID'])+\
             "&token="+url_escape(os.environ['TOKEN'])
-    conn = yield tornado.websocket.websocket_connect(url)
+    conn = yield tornado.websocket.websocket_connect(url,
+            ping_interval=60, # make sure we're still connected
+            ping_timeout=60)
     while True:
         msg = yield conn.read_message()
 

@@ -52,10 +52,18 @@ class WSClient:
                 elif "query" in msg:
                     value = msg["query"]["value"]
                     x = msg["query"]["x"]
+                    result = self.processQuery(value, x)
+                    self.ws.write_message(json.dumps({
+                        "response": result
+                    }))
                 elif "command" in msg:
                     command = msg["command"]["command"]
                     x = msg["command"]["x"]
                     url = msg["command"]["url"]
+                    result = self.processCommand(command, x, url)
+                    self.ws.write_message(json.dumps({
+                        "response": result
+                    }))
                 else:
                     logging.warning("Unknown message: " + str(msg))
         except KeyboardInterrupt:
@@ -65,6 +73,62 @@ class WSClient:
         if self.ws is None:
             logging.info("Reconnecting")
             self.connect()
+
+    def processQuery(self, value, x):
+        msg = "Unknown query"
+
+        if value == "memory":
+            pass
+        elif value == "disk":
+            pass
+        elif value == "battery":
+            pass
+        elif value == "processor":
+            pass
+        elif value == "open":
+            pass
+        elif value == "where":
+            pass
+
+        return msg
+
+    def processCommand(self, command, x, url):
+        msg = "Unknown command"
+
+        if command == "power off":
+            pass
+        elif command == "sleep":
+            pass
+        elif command == "lock":
+            pass
+        elif command == "unlock":
+            pass
+        elif command == "open":
+            pass
+        elif command == "close":
+            pass
+        elif command == "kill":
+            pass
+        elif command == "locate":
+            pass
+        elif command == "fetch":
+            pass
+        elif command == "set volume":
+            pass
+        elif command == "stop":
+            pass
+        elif command == "take a picture":
+            pass
+        elif command == "screenshot":
+            pass
+        elif command == "download":
+            pass
+        elif command == "start recording":
+            pass
+        elif command == "stop recording":
+            pass
+
+        return msg
 
 if __name__ == "__main__":
     assert "ID" in os.environ, "Must define ID environment variable"

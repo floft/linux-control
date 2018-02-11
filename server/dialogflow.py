@@ -83,10 +83,13 @@ class DialogFlowHandler(BasicAuthMixin, BaseHandler):
                             response = "Your "+computer+" is not set up for wake-on-LAN"
                 else:
                     if userid in self.clients and computer in self.clients[userid]:
-                        response = "Will forward command to your "+computer
                         self.clients[userid][computer].write_message(json.dumps({
                             "command": { "command": command, "x": x, "url": url }
                         }))
+                        response = yield self.clients[userid][computer].wait_response()
+
+                        if not response:
+                            response = "Command sent to "+computer
                     else:
                         response = "Your "+computer+" is not currently online"
 
@@ -123,10 +126,13 @@ class DialogFlowHandler(BasicAuthMixin, BaseHandler):
                         response = "Please specify which computer you are asking about"
                 else:
                     if userid in self.clients and computer in self.clients[userid]:
-                        response = "Will forward command to your "+computer
                         self.clients[userid][computer].write_message(json.dumps({
                             "query": { "value": value, "x": x }
                         }))
+                        response = yield self.clients[userid][computer].wait_response()
+
+                        if not response:
+                            response = "Your "+computer+" did not respond"
                     else:
                         response = "Your "+computer+" is not currently online"
         except KeyError:

@@ -1,6 +1,8 @@
 import json
+import time
 import logging
 import tornado.gen
+import tornado.queues
 import tornado.ioloop
 import tornado.websocket
 
@@ -11,8 +13,7 @@ class ClientConnection(BaseHandler,
     ip = None
     userid = None
     computer = None
-    close_timeout = None
-    pong_timeout = None
+    messages = tornado.queues.Queue()
 
     @tornado.gen.coroutine
     def get_current_user(self):
@@ -62,11 +63,14 @@ class ClientConnection(BaseHandler,
             logging.warning("WebSocket permission denied")
 
     @tornado.gen.coroutine
-    def on_message(self, message):
+    def on_message(self, msg):
         userid, computer = yield self.get_current_user()
 
         if userid:
-            logging.info("Got message "+message+" from "+str(userid)+" on "+computer)
+            if msg:
+                msg = json.loads(msg)
+                logging.info("Got message "+str(msg)+" from "+str(userid)+" on "+computer)
+                self.messages.put(msg)
         else:
             logging.warning("WebSocket message permission denied")
 
@@ -84,3 +88,22 @@ class ClientConnection(BaseHandler,
 
     #def on_pong(self, data):
     #    logging.info("Got pong")
+
+    @tornado.gen.coroutine
+    def wait_response(self):
+        """
+        Wait for the response for a certain time, if it comes, return it.
+        If it doesn't come before the timeout, return None
+        """
+        response = None
+        timeout = time.time() + 2 # wait up to 2 seconds
+
+        try:
+            msg = yield self.messages.get(timeout=timeout)
+        except tornado.gen.TimeoutError:
+            pass
+
+        if "response" in msg:
+            response = msg["response"]
+
+        return response

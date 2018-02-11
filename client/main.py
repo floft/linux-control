@@ -1,5 +1,6 @@
 import os
 import json
+import psutil
 import logging
 import tornado.gen
 import tornado.ioloop
@@ -78,17 +79,32 @@ class WSClient:
         msg = "Unknown query"
 
         if value == "memory":
-            pass
+            msg = "Memory usage is "+"%.1f"%psutil.virtual_memory().percent+"%"
         elif value == "disk":
-            pass
+            partitions = psutil.disk_partitions()
+            msg = "Disk usage is "
+
+            for p in partitions:
+                d = psutil.disk_usage(p.mountpoint)
+                msg += p.mountpoint + " " + "%.1f"%d.percent + "% "
         elif value == "battery":
-            pass
+            msg = "Battery is "+"%.1f"%psutil.sensors_battery().percent+"%"
         elif value == "processor":
+            msg = "CPU usage is "+"%.1f"%psutil.cpu_percent(interval=0.5)+"%"
             pass
         elif value == "open":
-            pass
-        elif value == "where":
-            pass
+            found = False
+            search = x.strip().lower()
+
+            for proc in psutil.process_iter(attrs=["name"]):
+                if search in proc.info["name"].lower():
+                    found = True
+                    break
+
+            if found:
+                msg = "Yes, "+search+" is running"
+            else:
+                msg = "No, "+search+" is not running"
 
         return msg
 

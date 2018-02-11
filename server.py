@@ -3,8 +3,8 @@ import json
 import redis
 import secrets
 import string
-import tormysql
 import traceback
+import collections
 import tornado.web
 import tornado.template
 import tornado.auth
@@ -28,11 +28,6 @@ define("debug", default=False, help="run in debug mode")
 # For OAuth2 data
 define("redis_host", default="127.0.0.1", help="database host")
 define("redis_port", default="6379", help="database port")
-# For Linux Control data
-define("mysql_host", default="127.0.0.1", help="database host")
-define("mysql_database", default="linuxcontrol", help="database name")
-define("mysql_user", default="linuxcontrol", help="database user")
-define("mysql_password", default="linuxcontrol", help="database password")
 
 # For DialogFlow
 credentials = { os.environ['HTTP_AUTH_USER']: os.environ['HTTP_AUTH_PASS'] }
@@ -56,8 +51,18 @@ class BaseHandler(tornado.web.RequestHandler):
     def redis(self):
         return self.application.redis
 
+    @property
+    def clients(self):
+        return self.application.clients
+
     def get_current_user(self):
-        return self.get_secure_cookie('id').decode("utf-8")
+        userid = None
+        cookie = self.get_secure_cookie("id")
+
+        if cookie:
+            userid = cookie.decode("utf-8")
+
+        return userid
 
     def render_from_string(self, tmpl, **kwargs):
         """
@@ -68,22 +73,22 @@ class BaseHandler(tornado.web.RequestHandler):
         return tornado.template.Template(tmpl).generate(**namespace)
 
     @tornado.gen.coroutine
-    def get_tokens(self, email):
+    def get_tokens(self, userid):
         """
         Get the tokens for this user and if they don't exist, return None
         """
         laptop_token = None
         desktop_token = None
+        result = self.redis.get("user_"+str(userid))
 
-        with (yield self.pool.Connection()) as conn:
-            with conn.cursor() as cursor:
-                yield cursor.execute("SELECT laptop_token, desktop_token FROM "+\
-                        "users WHERE email=%s", (email))
-                data = cursor.fetchone()
+        if result:
+            result = json.loads(result.decode("utf-8"))
 
-                if data and len(data) == 2:
-                    laptop_token = data[0]
-                    desktop_token = data[1]
+            if "laptop_token" in result:
+                laptop_token = result["laptop_token"]
+
+            if "desktop_token" in result:
+                desktop_token = result["desktop_token"]
 
         return laptop_token, desktop_token
 
@@ -94,46 +99,42 @@ class BaseHandler(tornado.web.RequestHandler):
         """
         laptop_mac = None
         desktop_mac = None
+        result = self.redis.get("user_"+str(userid))
 
-        with (yield self.pool.Connection()) as conn:
-            with conn.cursor() as cursor:
-                yield cursor.execute("SELECT laptop_mac, desktop_mac FROM "+\
-                        "users WHERE id=%s", (userid))
-                data = cursor.fetchone()
+        if result:
+            result = json.loads(result.decode("utf-8"))
 
-                if data and len(data) == 2:
-                    laptop_mac = data[0]
-                    desktop_mac = data[1]
+            if "laptop_mac" in result:
+                laptop_mac = result["laptop_mac"]
+
+            if "desktop_mac" in result:
+                desktop_mac = result["desktop_mac"]
 
         return laptop_mac, desktop_mac
 
     @tornado.gen.coroutine
     def getUserID(self, email):
         userid = None
+        result = self.redis.get("email_"+email)
 
-        with (yield self.pool.Connection()) as conn:
-            with conn.cursor() as cursor:
-                yield cursor.execute("SELECT id FROM "+\
-                        "users WHERE email=%s", (email))
-                data = cursor.fetchone()
+        if result:
+            result = json.loads(result.decode("utf-8"))
 
-                if data and len(data) == 1:
-                    userid = data[0]
+            if "id" in result:
+                userid = result["id"]
 
         return userid
 
     @tornado.gen.coroutine
     def getUserEmail(self, userid):
         email = None
+        result = self.redis.get("user_"+str(userid))
 
-        with (yield self.pool.Connection()) as conn:
-            with conn.cursor() as cursor:
-                yield cursor.execute("SELECT email FROM "+\
-                        "users WHERE id=%s", (userid))
-                data = cursor.fetchone()
+        if result:
+            result = json.loads(result.decode("utf-8"))
 
-                if data and len(data) == 1:
-                    email = data[0]
+            if "email" in result:
+                email = result["email"]
 
         return email
 
@@ -148,6 +149,71 @@ class BaseHandler(tornado.web.RequestHandler):
 
             if "token" in result and "user_id" in result and result["token"] == token:
                 userid = result["user_id"]
+
+        return userid
+
+    @tornado.gen.coroutine
+    def setMACs(self, userid, laptop_mac, desktop_mac):
+        def _setMACs(pipe):
+            current = pipe.get("user_"+str(userid))
+
+            if current:
+                current = json.loads(current.decode("utf-8"))
+                current["laptop_mac"] = laptop_mac
+                current["desktop_mac"] = desktop_mac
+                pipe.multi()
+                pipe.set("user_"+str(userid), json.dumps(current))
+
+        updated = False
+        self.redis.transaction(_setMACs, "user_"+str(userid))
+
+        return userid
+
+    @tornado.gen.coroutine
+    def resetToken(self, userid, computer):
+        def _resetToken(pipe):
+            current = pipe.get("user_"+str(userid))
+
+            if current:
+                current = json.loads(current.decode("utf-8"))
+                current[computer+"_token"] = genToken()
+                pipe.multi()
+                pipe.set("user_"+str(userid), json.dumps(current))
+
+        updated = False
+        self.redis.transaction(_resetToken, "user_"+str(userid))
+
+        return userid
+
+    @tornado.gen.coroutine
+    def createUser(self, email):
+        """
+        Create a new user
+
+        Check that the user doesn't in fact exist before this. Otherwise you'll
+        end up with duplicate users.
+        """
+        # Get user id, set to 0 if it doesn't exist
+        userid = self.redis.incr("user_increment")
+
+        print("Userid:", userid)
+
+        # Create user account
+        self.redis.set("user_"+str(userid),
+            json.dumps({
+                "id": userid,
+                "email": email,
+                "laptop_token": genToken(),
+                "desktop_token": genToken(),
+                "laptop_mac": "",
+                "desktop_mac": ""
+            }))
+
+        # Access to user id from email, e.g. for OAuth login via Google
+        self.redis.set("email_"+email,
+            json.dumps({
+                "id": userid
+            }))
 
         return userid
 
@@ -177,11 +243,6 @@ class OAuth2Handler(BaseHandler, oauth2.web.tornado.OAuth2Handler):
     def get(self):
         # Only require login for auth, not regenerating tokens
         if self.request.path == self.provider.token_path or self.get_current_user():
-
-            # We need to know what user this is to save to the DB along with the tokens
-            #if self.request.path == self.provider.authorize_path:
-            #    self.user_id = self.get_current_user()
-
             response = self._dispatch_request()
             self._map_response(response)
         else:
@@ -205,29 +266,12 @@ class GoogleOAuth2LoginHandler(BaseHandler,
             user = yield self.oauth2_request(
                 "https://www.googleapis.com/oauth2/v1/userinfo",
                 access_token=access["access_token"])
-            # Save the user and access token
-            self.set_secure_cookie('access_token', access['access_token'])
-            self.set_secure_cookie('email', user['email'])
+            # Save the user
             userid = yield self.getUserID(user['email'])
 
             # If not, create the user
             if not userid:
-                laptop_token = genToken()
-                desktop_token = genToken()
-
-                with (yield self.pool.Connection()) as conn:
-                    try:
-                        with conn.cursor() as cursor:
-                            yield cursor.execute(
-                                "INSERT INTO users(email, laptop_token, desktop_token) "+\
-                                "VALUES(%s,%s,%s)", (email, laptop_token, desktop_token))
-                    except:
-                        yield conn.rollback()
-                        print("Rolling back DB:", traceback.format_exc())
-                    else:
-                        yield conn.commit()
-
-                userid = yield self.getUserID(user['email'])
+                userid = yield self.createUser(user["email"])
 
             # If user already in the database, add the ID in our cookie
             # (required for OAuth2 linking to user account for instance)
@@ -295,12 +339,12 @@ class OAuth2SiteAdapter(AuthorizationCodeGrantSiteAdapter):
         else:
             state = ""
 
-        if redirect_uri: 
+        if redirect_uri:
             redirect_uri = tornado.escape.xhtml_escape(redirect_uri)
         else:
             redirect_uri = ""
 
-        if response_type: 
+        if response_type:
             response_type = tornado.escape.xhtml_escape(response_type)
         else:
             response_type = ""
@@ -334,51 +378,17 @@ class OAuth2SiteAdapter(AuthorizationCodeGrantSiteAdapter):
                 return True
         return False
 
-# https://gist.github.com/drgarcia1986/5dbd7ce85fb2db74a51b
-class OAuth2BaseHandler(tornado.web.RequestHandler):
-    def initialize(self, controller):
-        self.controller = controller
-
-    # authenticate tokens
-    def prepare(self):
-        try:
-            token = self.get_argument('access_token', None)
-            if not token:
-                auth_header = self.request.headers.get('Authorization', None)
-                if not auth_header:
-                    raise Exception('This resource need a authorization token')
-                token = auth_header[7:]
-
-            key = 'oauth2_{}'.format(token)
-            access = self.controller.access_token_store.rs.get(key)
-            if access:
-                access = json.loads(access.decode())
-            else:
-                raise Exception('Invalid Token')
-            if access['expires_at'] <= int(time.time()):
-                raise Exception('expired token')
-        except Exception as err:
-            self.set_header('Content-Type', 'application/json')
-            self.set_status(401)
-            self.finish(json.dumps({'error': str(err)}))
-
-#class FooHandler(OAuth2BaseHandler):
-#    def get(self):
-#        self.finish(json.dumps({'msg': 'This is Foo!'}))
-
 class LogoutHandler(BaseHandler):
     def get(self):
         self.clear_cookie('id')
-        self.clear_cookie('access_token')
-        self.clear_cookie('email')
         self.redirect('/linux-control')
 
 class MainHandler(BaseHandler):
     def get(self):
-        userid = self.get_secure_cookie('id').decode("utf-8")
+        userid = self.get_current_user()
 
         # If already logged in, forward to the account page
-        if userid: 
+        if userid:
             self.redirect("/linux-control/account")
         else:
             self.write("""
@@ -415,8 +425,9 @@ class AccountHandler(BaseHandler):
         <div>Logged in as: <i>{{ email }}</i></div>
 
         <h2>Tokens</h2>
-        <div>Laptop token: {{ laptop_token }} (reset)</div>
-        <div>Desktop token: {{ desktop_token }} (reset)</div>
+        <div>User ID: {{ userid }}</div>
+        <div>Laptop token: {{ laptop_token }} (<a href="?reset=laptop">reset</a>)</div>
+        <div>Desktop token: {{ desktop_token }} (<a href="?reset=desktop">reset</a>)</div>
 
         <h2>Wake on LAN</h2>
         <form method="POST">
@@ -434,31 +445,44 @@ class AccountHandler(BaseHandler):
     @tornado.gen.coroutine
     @tornado.web.authenticated
     def get(self):
-        userid = self.get_secure_cookie('id').decode("utf-8")
-        email = self.get_secure_cookie('email').decode("utf-8")
+        userid = self.get_current_user()
+        email = yield self.getUserEmail(userid)
 
-        # Check that this user is in the database and there are tokens for the
-        # laptop and desktop computers
-        laptop_token, desktop_token = yield self.get_tokens(email)
-        laptop_mac, desktop_mac = yield self.get_macs(userid)
+        reset = self.get_argument("reset", "")
 
-        if laptop_mac:
-            laptop_mac = tornado.escape.xhtml_escape(laptop_mac)
+        if reset:
+            if reset == "laptop":
+                yield self.resetToken(userid, reset)
+            elif reset == "desktop":
+                yield self.resetToken(userid, reset)
+
+            # To get rid of the "?reset=" in the request so we don't keep on
+            # reseting it each time you reload the page
+            self.redirect(self.request.path)
         else:
-            laptop_mac = ""
+            # Check that this user is in the database and there are tokens for the
+            # laptop and desktop computers
+            laptop_token, desktop_token = yield self.get_tokens(userid)
+            laptop_mac, desktop_mac = yield self.get_macs(userid)
 
-        if desktop_mac:
-            desktop_mac = tornado.escape.xhtml_escape(desktop_mac)
-        else:
-            desktop_mac = ""
+            if laptop_mac:
+                laptop_mac = tornado.escape.xhtml_escape(laptop_mac)
+            else:
+                laptop_mac = ""
 
-        self.write(self.render_from_string(self.TEMPLATE,
-            email=tornado.escape.xhtml_escape(email),
-            laptop_token=laptop_token,
-            desktop_token=desktop_token,
-            laptop_mac=laptop_mac,
-            desktop_mac=desktop_mac,
-        ))
+            if desktop_mac:
+                desktop_mac = tornado.escape.xhtml_escape(desktop_mac)
+            else:
+                desktop_mac = ""
+
+            self.write(self.render_from_string(self.TEMPLATE,
+                userid=userid,
+                email=tornado.escape.xhtml_escape(email),
+                laptop_token=laptop_token,
+                desktop_token=desktop_token,
+                laptop_mac=laptop_mac,
+                desktop_mac=desktop_mac,
+            ))
 
     @tornado.gen.coroutine
     @tornado.web.authenticated
@@ -467,17 +491,7 @@ class AccountHandler(BaseHandler):
         laptop_mac = self.get_argument("laptop_mac", "")
         desktop_mac = self.get_argument("desktop_mac", "")
 
-        with (yield self.pool.Connection()) as conn:
-            try:
-                with conn.cursor() as cursor:
-                    yield cursor.execute(
-                        "UPDATE users SET laptop_mac = %s, desktop_mac = %s WHERE id = %s",
-                        (laptop_mac, desktop_mac, userid))
-            except:
-                yield conn.rollback()
-                print("Rolling back DB:", traceback.format_exc())
-            else:
-                yield conn.commit()
+        yield self.setMACs(userid, laptop_mac, desktop_mac)
 
         self.redirect(self.request.uri)
 
@@ -554,11 +568,15 @@ class DialogFlowHandler(BasicAuthMixin, BaseHandler):
                         else:
                             response = "Your "+computer+" is not set up for wake-on-LAN"
                 else:
-                    response = "Will forward command to "+computer+" for user "+str(userid)
-                    # TODO look up websocket for this connection, if it doesn't
-                    # exist say computer not online, otherwise forward and wait
-                    # for response
-                    #
+                    if userid in self.clients and computer in self.clients[userid]:
+                        response = "Will forward command to your "+computer
+                        self.clients[userid][computer].write_message(json.dumps({
+                            "command": { "command": command, "x": x, "url": url }
+                        }))
+                    else:
+                        response = "Your "+computer+" is not currently online"
+
+                    # TODO
                     # If this takes too long, then immediately respond "Command sent to laptop"
                     # and then do this: https://productforums.google.com/forum/#!topic/dialogflow/HeXqMLQs6ok;context-place=forum/dialogflow
                     # saving context and later returning response or something
@@ -567,8 +585,13 @@ class DialogFlowHandler(BasicAuthMixin, BaseHandler):
                 x = params['X']
                 computer = params['Computer']
 
-                response = "Will forward query to "+computer+" for user "+str(userid)
-                # TODO same as above... forward to computer if online
+                if userid in self.clients and computer in self.clients[userid]:
+                    response = "Will forward command to your "+computer
+                    self.clients[userid][computer].write_message(json.dumps({
+                        "query": { "value": value, "x": x }
+                    }))
+                else:
+                    response = "Your "+computer+" is not currently online"
         except KeyError:
             pass
 
@@ -587,24 +610,23 @@ class ClientConnection(BaseHandler,
     def get_current_user(self):
         """
         See if the email/token is valid
-
-        Return the email as the user_id and whether this is for the laptop
         """
-        email = self.get_argument('email')
+        userid = self.get_argument('id')
         token = self.get_argument('token')
 
         # Check that token is in database for this email
-        userid = yield self.getUserID(email)
-        laptop_token, desktop_token = yield self.get_tokens(email)
+        laptop_token, desktop_token = yield self.get_tokens(userid)
 
         if token == laptop_token:
-            return userid, email, True
+            return userid, "laptop"
         elif token == desktop_token:
-            return userid, email, False
+            return userid, "desktop"
         else:
-            self.write_message(u"Permission Denied")
+            self.write_message(json.dumps({
+                "error": "Permission Denied"
+            }))
             self.close()
-            return None
+            return None, None
 
     def check_xsrf_cookie(self):
         """
@@ -614,38 +636,52 @@ class ClientConnection(BaseHandler,
 
     @tornado.gen.coroutine
     def open(self):
-        user_id, email, laptop = yield self.get_current_user()
-        print("WebSocket opened by", user_id, " (", email, ") for ", "laptop" if laptop else "desktop")
+        userid, computer = yield self.get_current_user()
 
-        # TODO save this?
-        # https://stackoverflow.com/questions/21929315/keeping-a-list-of-websocket-connections-in-tornado
+        if userid:
+            self.clients[userid][computer] = self # Note: overwrite previous socket from user
+            print("WebSocket opened by", userid, "for", computer)
+            print("List:", self.clients)
+        else:
+            print("WebSocket permission denied")
 
     @tornado.gen.coroutine
     def on_message(self, message):
-        user_id, email, laptop = yield self.get_current_user()
-        self.write_message(u"You said: "+ message + " on your "+"laptop" if laptop else "desktop")
+        userid, computer = yield self.get_current_user()
+
+        if userid:
+            print("Got message:", message, "from", userid, "on", computer)
+        else:
+            print("WebSocket message permission denied")
 
     def on_close(self):
-        print("WebSocket closed")
+        found = False
+
+        for userid, computers in self.clients.items():
+            for computer, socket in computers.items():
+                if socket == self:
+                    found = True
+                    del self.clients[userid][computer]
+                    break
+
+        print("WebSocket closed, did " + ("" if found else "not ") + "find in list of saved sockets")
+        print("List:", self.clients)
 
 class Application(tornado.web.Application):
     def __init__(self):
         #
         # Database
         #
-        self.pool = tormysql.ConnectionPool(
-            max_connections = 2,
-            idle_seconds = 7200,
-            wait_connection_timeout = 3,
-            host = options.mysql_host,
-            user = options.mysql_user,
-            passwd = options.mysql_password,
-            db = options.mysql_database,
-            charset = "utf8"
-        )
         self.redis = redis.StrictRedis(host=options.redis_host, port=options.redis_port, db=0)
 
-        self.maybe_create_tables()
+        #
+        #
+        # Dictionary of dictionaries of open websockets indexed by user id then computer name
+        # e.g. { 1: { "laptop": ClientConnection(), "desktop": ClientConnection() ], ... }
+        #
+        # Recursive: https://stackoverflow.com/a/19189356/2698494
+        rec_dd = lambda: collections.defaultdict(rec_dd)
+        self.clients = rec_dd()
 
         #
         # OAuth2 provider
@@ -717,35 +753,6 @@ class Application(tornado.web.Application):
             debug=options.debug,
         )
         super(Application, self).__init__(handlers, **settings)
-
-    def __del__(self):
-        self.pool.close()
-
-    @tornado.gen.coroutine
-    def maybe_create_tables(self):
-        with (yield self.pool.Connection()) as conn:
-            try:
-                with conn.cursor() as cursor:
-                    yield cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS `users` (
-                        `id` int(11) NOT NULL AUTO_INCREMENT,
-                        `email` varchar(255) COLLATE utf8_bin NOT NULL,
-                        `laptop_token` varchar(255) COLLATE utf8_bin NOT NULL,
-                        `desktop_token` varchar(255) COLLATE utf8_bin NOT NULL,
-                        `laptop_mac` varchar(255) COLLATE utf8_bin,
-                        `desktop_mac` varchar(255) COLLATE utf8_bin,
-                        PRIMARY KEY (`id`),
-                        UNIQUE KEY (`email`)
-                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin
-                    AUTO_INCREMENT=1 ;
-                    """)
-            except Exception:
-                yield conn.rollback()
-                print("Rolling back DB:", traceback.format_exc())
-            else:
-                yield conn.commit()
-                print("Done with initial database setup")
-
 
 def main():
     assert 'COOKIE_SECRET' in os.environ, "Must define COOKIE_SECRET environment variable"

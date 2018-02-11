@@ -105,7 +105,7 @@ class Application(tornado.web.Application):
         ]
         settings = dict(
             websocket_ping_interval=60, # ping every minute
-            websocket_ping_timeout=60, # close connection if no pong
+            websocket_ping_timeout=30, # close connection if no pong
             cookie_secret=os.environ['COOKIE_SECRET'],
             xsrf_cookies=True,
             google_oauth={

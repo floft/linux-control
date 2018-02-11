@@ -1,5 +1,6 @@
 import json
 import tornado.gen
+import tornado.ioloop
 import tornado.websocket
 
 from server.base import BaseHandler
@@ -7,28 +8,40 @@ from server.base import BaseHandler
 class ClientConnection(BaseHandler,
         tornado.websocket.WebSocketHandler):
     ip = None
+    userid = None
+    computer = None
+    close_timeout = None
+    pong_timeout = None
 
     @tornado.gen.coroutine
     def get_current_user(self):
         """
         See if the email/token is valid
         """
-        userid = self.get_argument('id')
-        token = self.get_argument('token')
-
-        # Check that token is in database for this email
-        laptop_token, desktop_token = yield self.get_tokens(userid)
-
-        if token == laptop_token:
-            return userid, "laptop"
-        elif token == desktop_token:
-            return userid, "desktop"
+        if self.userid and self.computer:
+            return self.userid, self.computer
         else:
-            self.write_message(json.dumps({
-                "error": "Permission Denied"
-            }))
-            self.close()
-            return None, None
+            userid = self.get_argument('id')
+            token = self.get_argument('token')
+
+            # Check that token is in database for this email
+            laptop_token, desktop_token = yield self.get_tokens(userid)
+
+            if token == laptop_token:
+                self.userid = userid
+                self.computer = "laptop"
+            elif token == desktop_token:
+                self.userid = userid
+                self.computer = "desktop"
+            else:
+                self.userid = None
+                self.computer = None
+                self.write_message(json.dumps({
+                    "error": "Permission Denied"
+                }))
+                self.close()
+
+            return self.userid, self.computer
 
     def check_xsrf_cookie(self):
         """

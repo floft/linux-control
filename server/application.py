@@ -104,6 +104,8 @@ class Application(tornado.web.Application):
             #(r"/linux-control/foo", FooHandler, dict(provider=self.auth_controller))
         ]
         settings = dict(
+            websocket_ping_interval=60, # ping every minute
+            websocket_ping_timeout=60, # close connection if no pong
             cookie_secret=os.environ['COOKIE_SECRET'],
             xsrf_cookies=True,
             google_oauth={

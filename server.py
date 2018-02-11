@@ -1,6 +1,7 @@
 import os
 import json
 import redis
+import GeoIP
 import secrets
 import string
 import traceback
@@ -13,6 +14,7 @@ import tornado.ioloop
 import tornado.options
 import tornado.websocket
 import tornado.httpserver
+import tornado.httpclient
 import oauth2.grant
 import oauth2.web.tornado
 import oauth2.tokengenerator
@@ -55,6 +57,14 @@ class BaseHandler(tornado.web.RequestHandler):
     def clients(self):
         return self.application.clients
 
+    @property
+    def gi(self):
+        return self.application.gi
+
+    @property
+    def serverIp(self):
+        return self.application.serverIp
+
     def get_current_user(self):
         userid = None
         cookie = self.get_secure_cookie("id")
@@ -71,6 +81,11 @@ class BaseHandler(tornado.web.RequestHandler):
         namespace = self.get_template_namespace()
         namespace.update(kwargs)
         return tornado.template.Template(tmpl).generate(**namespace)
+
+    def getIP(self):
+        return self.request.headers.get('X-Forwarded-For',
+                self.request.headers.get('X-Real-Ip',
+                    self.request.remote_ip))
 
     @tornado.gen.coroutine
     def get_tokens(self, userid):
@@ -585,13 +600,36 @@ class DialogFlowHandler(BasicAuthMixin, BaseHandler):
                 x = params['X']
                 computer = params['Computer']
 
-                if userid in self.clients and computer in self.clients[userid]:
-                    response = "Will forward command to your "+computer
-                    self.clients[userid][computer].write_message(json.dumps({
-                        "query": { "value": value, "x": x }
-                    }))
+                # Only query we handle is the "where is my laptop/desktop"
+                if value == "where":
+                    if computer:
+                        if userid in self.clients and computer in self.clients[userid]:
+                            ip = self.clients[userid][computer].ip
+                            response = "Unknown location for your "+computer
+
+                            if ip:
+                                if ip == self.serverIp:
+                                    response = "Your "+computer+" is at home"
+                                else:
+                                    data = self.gi.record_by_addr(ip)
+
+                                    if data and "city" in data and "region_name" in data and "country_name" in data:
+                                        city = data["city"]
+                                        region = data["region_name"]
+                                        country = data["country_name"]
+                                        response = "Your "+computer+" is in "+city+", "+region+", "+country+" ("+ip+")"
+                        else:
+                            response = "Could not find location of your "+computer
+                    else:
+                        response = "Please specify which computer you are asking about"
                 else:
-                    response = "Your "+computer+" is not currently online"
+                    if userid in self.clients and computer in self.clients[userid]:
+                        response = "Will forward command to your "+computer
+                        self.clients[userid][computer].write_message(json.dumps({
+                            "query": { "value": value, "x": x }
+                        }))
+                    else:
+                        response = "Your "+computer+" is not currently online"
         except KeyError:
             pass
 
@@ -606,6 +644,8 @@ class DialogFlowHandler(BasicAuthMixin, BaseHandler):
 
 class ClientConnection(BaseHandler,
         tornado.websocket.WebSocketHandler):
+    ip = None
+
     @tornado.gen.coroutine
     def get_current_user(self):
         """
@@ -639,9 +679,9 @@ class ClientConnection(BaseHandler,
         userid, computer = yield self.get_current_user()
 
         if userid:
+            self.ip = self.getIP()
             self.clients[userid][computer] = self # Note: overwrite previous socket from user
-            print("WebSocket opened by", userid, "for", computer)
-            print("List:", self.clients)
+            print("WebSocket opened by", userid, "for", computer, "on", self.ip)
         else:
             print("WebSocket permission denied")
 
@@ -665,7 +705,6 @@ class ClientConnection(BaseHandler,
                     break
 
         print("WebSocket closed, did " + ("" if found else "not ") + "find in list of saved sockets")
-        print("List:", self.clients)
 
 class Application(tornado.web.Application):
     def __init__(self):
@@ -682,6 +721,16 @@ class Application(tornado.web.Application):
         # Recursive: https://stackoverflow.com/a/19189356/2698494
         rec_dd = lambda: collections.defaultdict(rec_dd)
         self.clients = rec_dd()
+
+        #
+        # Looking up location from IP
+        #
+        self.gi = GeoIP.GeoIP("/usr/share/GeoIP/GeoIPCity.dat", GeoIP.GEOIP_STANDARD)
+
+        # Get external IP of server
+        self.serverIp = None
+        http_client = tornado.httpclient.AsyncHTTPClient()
+        http_client.fetch("https://api.ipify.org?format=json", self._saveIP)
 
         #
         # OAuth2 provider
@@ -753,6 +802,19 @@ class Application(tornado.web.Application):
             debug=options.debug,
         )
         super(Application, self).__init__(handlers, **settings)
+
+    def _saveIP(self, response):
+        """
+        Callback for saving server ip
+        """
+        if response.error:
+            print("Error getting server IP:", response.error)
+        else:
+            data = json.loads(response.body)
+
+            if "ip" in data:
+                self.serverIp = data["ip"]
+                print("Server IP:", self.serverIp)
 
 def main():
     assert 'COOKIE_SECRET' in os.environ, "Must define COOKIE_SECRET environment variable"

@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import logging
 import tornado.gen
@@ -171,12 +172,10 @@ class WSClient:
         elif command == "fetch":
             msg = "Not implemented yet"
         elif command == "set volume":
-            x = x.replace("%", "")
-
             try:
-                volume = int(x)
+                volume = int(re.search(r'\d+', x).group())
             except ValueError:
-                msg = "Invalid percentage"
+                msg = "Invalid percentage: "+x
             else:
                 with pulsectl.Pulse('setting-volume') as pulse:
                     for sink in pulse.sink_list():

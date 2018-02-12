@@ -15,11 +15,18 @@ from concurrent.futures import ThreadPoolExecutor
 # For commands and queries
 import cv2
 import dbus
+import time
 import psutil
 import plocate
 import pulsectl
 import datetime
+import subprocess
+from xdo import Xdo
 from plocate import plocate
+
+import gi
+gi.require_version('Tracker', '2.0')
+from gi.repository import Tracker
 
 class WSClient:
     def __init__(self, url, ping_interval=60, ping_timeout=60*3, max_workers=4):
@@ -152,7 +159,17 @@ class WSClient:
             self.cmd_unlock()
             msg = "Unlocking"
         elif command == "open":
-            msg = "Not implemented yet"
+            if x:
+                results = yield self.cmd_findApp(x.strip().lower())
+
+                if len(results) > 0:
+                    fn = results[0][7:] # remove file://
+                    msg = "Opening "+fn
+                    self.ioloop.add_callback(lambda: self.cmd_openApp(fn))
+                else:
+                    msg = "No results found"
+            else:
+                msg = "Missing program to start"
         elif command == "close":
             msg = "Not implemented yet"
         elif command == "kill":
@@ -161,13 +178,13 @@ class WSClient:
             if x:
                 # Sometimes the search is slow though
                 try:
-                    result = yield tornado.gen.with_timeout(datetime.timedelta(seconds=3.5), self.locate(x))
+                    result = yield tornado.gen.with_timeout(datetime.timedelta(seconds=3.5), self.cmd_locate(x))
                 except tornado.gen.TimeoutError:
                     msg = "Timed out"
                 else:
                     msg = "Results: " + result
             else:
-                msg = "Nothing to search for"
+                msg = "Missing search query"
 
         elif command == "fetch":
             msg = "Not implemented yet"
@@ -217,7 +234,7 @@ class WSClient:
             cv2.imwrite(filename, frame)
 
     @run_on_executor
-    def locate(self, pattern):
+    def cmd_locate(self, pattern):
         # TODO most of the time this times out...
         mlocatedb="/var/lib/mlocate/mlocate.db"
         results = ""
@@ -233,6 +250,50 @@ class WSClient:
                 results += p + " "
 
         return results
+
+    @run_on_executor
+    def cmd_findApp(self, query):
+        results = []
+
+        # See: https://github.com/linuxmint/nemo/blob/master/libnemo-private/nemo-search-engine-tracker.c
+        conn = Tracker.SparqlConnection.get(None)
+        cursor = conn.query("""SELECT nie:url(?urn) WHERE {
+            ?urn a nfo:FileDataObject .
+            FILTER (fn:contains(lcase(nfo:fileName(?urn)),"%s") &&
+                    fn:starts-with(lcase(nie:url(?urn)),"file://") &&
+                    fn:ends-with(lcase(nie:url(?urn)),".desktop"))
+        } ORDER BY DESC(nie:url(?urn)) DESC(nfo:fileName(?urn))"""%(query), None)
+
+        while cursor.next(None):
+            results.append(cursor.get_string(0)[0])
+
+        return results
+
+    @run_on_executor
+    def cmd_openApp(self, fn):
+        subprocess.Popen(['dex', fn], close_fds=True)
+
+        # Try to get the name of this program
+        name = None
+        with open(fn, 'r') as f:
+            for line in f:
+                m = re.match(r"Name\s?=(.*)$", line)
+
+                if m and len(m.groups()) > 0:
+                    name = m.groups()[0]
+                    break
+
+        if name:
+            # Hopefully the app has started by now
+            time.sleep(3)
+
+            # Try to bring it to the front
+            #
+            # Note: we can't use the pid from the Popen since
+            # that's the pid of dex, not the program we started
+            xdo = Xdo()
+            for windowId in xdo.search_windows(winname=name.encode("utf-8")):
+                xdo.activate_window(windowId)
 
     def can_poweroff(self):
         bus = dbus.SystemBus()

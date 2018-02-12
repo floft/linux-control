@@ -1,6 +1,6 @@
 import json
-import time
 import logging
+import datetime
 import tornado.gen
 import tornado.queues
 import tornado.ioloop
@@ -96,7 +96,7 @@ class ClientConnection(BaseHandler,
         If it doesn't come before the timeout, return None
         """
         response = None
-        timeout = time.time() + 2 # wait up to 2 seconds
+        timeout = datetime.timedelta(seconds=4) # DialogFlow's timeout is 5 seconds
 
         try:
             msg = yield self.messages.get(timeout=timeout)

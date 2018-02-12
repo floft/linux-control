@@ -102,8 +102,8 @@ class ClientConnection(BaseHandler,
             msg = yield self.messages.get(timeout=timeout)
         except tornado.gen.TimeoutError:
             pass
-
-        if "response" in msg:
-            response = msg["response"]
+        else:
+            if "response" in msg:
+                response = msg["response"]
 
         return response

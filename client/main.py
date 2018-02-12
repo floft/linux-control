@@ -1,12 +1,17 @@
 import os
 import json
-import psutil
 import logging
 import tornado.gen
 import tornado.ioloop
 import tornado.websocket
 import tornado.httpclient
 from tornado.escape import url_escape
+
+# For commands and queries
+import time
+import dbus
+import psutil
+import pulsectl
 
 class WSClient:
     def __init__(self, url, ping_interval=60, ping_timeout=60*3):
@@ -112,13 +117,20 @@ class WSClient:
         msg = "Unknown command"
 
         if command == "power off":
-            pass
+            self.ioloop.add_timeout(time.time() + 2, self.cmd_poweroff)
+            msg = "Powering off"
         elif command == "sleep":
-            pass
+            self.ioloop.add_timeout(time.time() + 2, self.cmd_sleep)
+            msg = "Sleeping"
+        elif command == "reboot":
+            self.ioloop.add_timeout(time.time() + 2, self.cmd_reboot)
+            msg = "Rebooting"
         elif command == "lock":
-            pass
+            self.cmd_lock()
+            msg = "Locking"
         elif command == "unlock":
-            pass
+            self.cmd_unlock()
+            msg = "Unlocking"
         elif command == "open":
             pass
         elif command == "close":
@@ -130,7 +142,17 @@ class WSClient:
         elif command == "fetch":
             pass
         elif command == "set volume":
-            pass
+            x = x.replace("%", "")
+
+            try:
+                volume = int(x)
+            except ValueError:
+                msg = "Invalid percentage"
+            else:
+                with pulsectl.Pulse('volume-increaser') as pulse:
+                    for sink in pulse.sink_list():
+                        pulse.volume_set_all_chans(sink, volume/100.0)
+                msg = "Volume set"
         elif command == "stop":
             pass
         elif command == "take a picture":
@@ -145,6 +167,41 @@ class WSClient:
             pass
 
         return msg
+
+    def cmd_poweroff(self):
+        bus = dbus.SystemBus()
+        obj = bus.get_object('org.freedesktop.login1', '/org/freedesktop/login1')
+        iface = dbus.Interface(obj, 'org.freedesktop.login1.Manager')
+        method = iface.get_dbus_method("PowerOff")
+        method(True)
+
+    def cmd_sleep(self):
+        bus = dbus.SystemBus()
+        obj = bus.get_object('org.freedesktop.login1', '/org/freedesktop/login1')
+        iface = dbus.Interface(obj, 'org.freedesktop.login1.Manager')
+        method = iface.get_dbus_method("Suspend")
+        method(True)
+
+    def cmd_reboot(self):
+        bus = dbus.SystemBus()
+        obj = bus.get_object('org.freedesktop.login1', '/org/freedesktop/login1')
+        iface = dbus.Interface(obj, 'org.freedesktop.login1.Manager')
+        method = iface.get_dbus_method("Reboot")
+        method(True)
+
+    def cmd_lock(self):
+        bus = dbus.SessionBus()
+        obj = bus.get_object('org.gnome.ScreenSaver', '/org/gnome/ScreenSaver')
+        iface = dbus.Interface(obj, 'org.gnome.ScreenSaver')
+        method = iface.get_dbus_method("SetActive")
+        method(True)
+
+    def cmd_unlock(self):
+        bus = dbus.SessionBus()
+        obj = bus.get_object('org.gnome.ScreenSaver', '/org/gnome/ScreenSaver')
+        iface = dbus.Interface(obj, 'org.gnome.ScreenSaver')
+        method = iface.get_dbus_method("SetActive")
+        method(False)
 
 if __name__ == "__main__":
     assert "ID" in os.environ, "Must define ID environment variable"

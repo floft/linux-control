@@ -13,7 +13,7 @@ class ClientConnection(BaseHandler,
     ip = None
     userid = None
     computer = None
-    messages = tornado.queues.Queue()
+    messages = tornado.queues.Queue(maxsize=2)
 
     @tornado.gen.coroutine
     def get_current_user(self):

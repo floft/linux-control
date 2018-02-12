@@ -117,14 +117,23 @@ class WSClient:
         msg = "Unknown command"
 
         if command == "power off":
-            self.ioloop.add_timeout(time.time() + 2, self.cmd_poweroff)
-            msg = "Powering off"
+            if self.can_poweroff():
+                self.ioloop.add_timeout(time.time() + 2, self.cmd_poweroff)
+                msg = "Powering off"
+            else:
+                msg = "Cannot power off"
         elif command == "sleep":
-            self.ioloop.add_timeout(time.time() + 2, self.cmd_sleep)
-            msg = "Sleeping"
+            if self.can_sleep():
+                self.ioloop.add_timeout(time.time() + 2, self.cmd_sleep)
+                msg = "Sleeping"
+            else:
+                msg = "Cannot sleep"
         elif command == "reboot":
-            self.ioloop.add_timeout(time.time() + 2, self.cmd_reboot)
-            msg = "Rebooting"
+            if self.can_reboot():
+                self.ioloop.add_timeout(time.time() + 2, self.cmd_reboot)
+                msg = "Rebooting"
+            else:
+                msg = "Cannot reboot"
         elif command == "lock":
             self.cmd_lock()
             msg = "Locking"
@@ -167,6 +176,27 @@ class WSClient:
             pass
 
         return msg
+
+    def can_poweroff(self):
+        bus = dbus.SystemBus()
+        obj = bus.get_object('org.freedesktop.login1', '/org/freedesktop/login1')
+        iface = dbus.Interface(obj, 'org.freedesktop.login1.Manager')
+        result = iface.Get("CanPowerOff")
+        return result == "yes"
+
+    def can_sleep(self):
+        bus = dbus.SystemBus()
+        obj = bus.get_object('org.freedesktop.login1', '/org/freedesktop/login1')
+        iface = dbus.Interface(obj, 'org.freedesktop.login1.Manager')
+        result = iface.Get("CanSuspend")
+        return result == "yes"
+
+    def can_reboot(self):
+        bus = dbus.SystemBus()
+        obj = bus.get_object('org.freedesktop.login1', '/org/freedesktop/login1')
+        iface = dbus.Interface(obj, 'org.freedesktop.login1.Manager')
+        result = iface.Get("CanReboot")
+        return result == "yes"
 
     def cmd_poweroff(self):
         bus = dbus.SystemBus()

@@ -181,22 +181,22 @@ class WSClient:
         bus = dbus.SystemBus()
         obj = bus.get_object('org.freedesktop.login1', '/org/freedesktop/login1')
         iface = dbus.Interface(obj, 'org.freedesktop.login1.Manager')
-        result = iface.Get("CanPowerOff")
-        return result == "yes"
+        result = iface.get_dbus_method("CanPowerOff")
+        return result() == "yes"
 
     def can_sleep(self):
         bus = dbus.SystemBus()
         obj = bus.get_object('org.freedesktop.login1', '/org/freedesktop/login1')
         iface = dbus.Interface(obj, 'org.freedesktop.login1.Manager')
-        result = iface.Get("CanSuspend")
-        return result == "yes"
+        result = iface.get_dbus_method("CanSuspend")
+        return result() == "yes"
 
     def can_reboot(self):
         bus = dbus.SystemBus()
         obj = bus.get_object('org.freedesktop.login1', '/org/freedesktop/login1')
         iface = dbus.Interface(obj, 'org.freedesktop.login1.Manager')
-        result = iface.Get("CanReboot")
-        return result == "yes"
+        result = iface.get_dbus_method("CanReboot")
+        return result() == "yes"
 
     def cmd_poweroff(self):
         bus = dbus.SystemBus()

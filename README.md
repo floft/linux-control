@@ -5,6 +5,15 @@ desktop and laptop computers will connect to and then allow some remote
 commands to be run via Google Assistant, e.g. power on via Wake-on-LAN, lock or
 unlock the screen, put to sleep, open or close a program, etc.
 
+## Summary
+
+Before you start, you need to know how much work this entails:
+
+ * Create Google Actions project, select Dialogflow, import project
+ * Setup port forwarding on your router to some internal server
+ * Setup server on that internal server ("Setup Server" section), HTTPS is required
+ * On your laptop and/or desktop, setup the client ("Setup Client" section)
+
 ## Raspberry Pi Setup
 For this example, I'll be showing how to set it up on a Raspberry Pi running
 Arch Linux. If you already have a computer to use as the server, skip to the
@@ -86,13 +95,16 @@ Install *nginx*:
     sudo systemctl enable nginx
     sudo systemctl start nginx
 
-Setup HTTPS using Let's Encrypt. I used the [Zero SSL](https://zerossl.com/free-ssl/#crt)
+Setup HTTPS using Let's Encrypt. In my case, my ISP blocks ports 80 and 443, so
+I have to use DNS verification. If this is the case for you too, you might try
+[Lego](https://lincolnloop.com/blog/letsencrypt-dns-challenge/). I used the
+[Zero SSL](https://zerossl.com/free-ssl/#crt)
 website since Namecheap hasn't approved my API access even though I requested
-it ages ago and they say a few business days.
+it ages ago and they say give it a few business days.
 
 First time:
  * Enter email
- * Enter domains: domain.tld www.domain.tl
+ * Enter domains: domain.tld www.domain.tld
  * Check DNS verification
 
 Note, if you use Namecheap, make sure you don't put the "domain.tld" part of

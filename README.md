@@ -5,7 +5,9 @@ desktop and laptop computers will connect to and then allow some remote
 commands to be run via Google Assistant, e.g. power on via Wake-on-LAN, lock or
 unlock the screen, put to sleep, open or close a program, etc.
 
-## Summary
+See the [demo video on Youtube](https://youtu.be/luBkZoSbxm4).
+
+## Summary / Why this isn't simple
 
 Before you start, you need to know how much work this entails:
 
@@ -16,10 +18,22 @@ Before you start, you need to know how much work this entails:
  * On your laptop and/or desktop, setup the Linux Control client ("Setup
    Client" section)
 
-Note: the client code is somewhat messy. For example, locking/unlocking code
-probably only works for Gnome at the moment. Opening app code searches Gnome
-Tracker database to find .destkop file, then does system call to open with
-"dex".
+Google Actions aren't designed for each individual user of the action to have
+their own server to process the request. Normally if you create the app (e.g.
+me) you'd have a server somewhere to handle all of your users. However, in this
+case:
+
+ * Nobody would really want to trust somebody else's server that could lock,
+   unlock, turn on, power off, etc. all of your computers. If you use my
+   server, I could modify it to command your computer whenever I wanted.
+ * I don't have the Internet bandwidth anyway nor the power on my Raspberry Pi
+   to support that many users.
+ * Wake-on-LAN requires that your server be on the same LAN as the computers
+   you want to wake.
+
+Thus, at the moment, the only way I'm aware of doing this is each person
+creates their own Google Action project. Feel free to alert me to better ways
+of doing it.
 
 ## Currently supported commands
 Each of these works for "laptop" or "desktop", but I'll use "laptop" for these
@@ -44,6 +58,10 @@ idea.
    - What is the battery on my laptop?
    - What is the CPU usage of my laptop?
    - Is Firefox open on my laptop?
+
+Note: this is more proof-of-concept and won't necessarily work with all system
+setups. For example, the locking/unlocking is for Gnome at the moment and
+opening app code searches Gnome Tracker database to find .destkop files.
 
 ## Google Action Project
 Create a new [Google Actions project](https://console.actions.google.com/).

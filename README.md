@@ -32,13 +32,13 @@ idea.
    - Turn on my laptop. *(via Wake-on-LAN, i.e. only works if your laptop/desktop is on the same LAN as the server, and you need to set the MAC address via the website)*
    - Power off / suspend / reboot my laptop. *(via Systemd)*
    - Lock/unlock my laptop. *(for Gnome)*
-   - Open Firefox on my laptop. *(looks up .desktop files in Gnome Tracker databse)*
-   - Locate filename on my laptop.
+   - Open Firefox on my laptop. *(looks up .desktop files in Gnome Tracker database)*
+   - Locate filename on my laptop. *(via mlocate database, and may timeout since Dialogflow requires response in less than 5 seconds)*
    - Set volume to 50% on my laptop. *(via Pulseaudio)*
    - Take a picture on my laptop. *(adds to Dropbox)*
    - Take a screenshot on my laptop. *(adds to Dropbox)*
  * Queries
-   - Where is my laptop? *(either "at home" if on same network as server or does GeoIP lookup)*
+   - Where is my laptop? *(either "at home" if on same network as server or does GeoIP lookup from IP it's connected to server from)*
    - What is the memory usage of my laptop?
    - What is the disk usage of my laptop?
    - What is the battery on my laptop?

@@ -17,8 +17,10 @@ Before you start, you need to know how much work this entails:
    Client" section)
 
 ## Google Action Project
- * Create a new [Google Actions project](https://console.actions.google.com/).
- * After naming it, click on "BUILD" under Dialogflow.
+Create a new [Google Actions project](https://console.actions.google.com/).
+
+Setup Dialogflow:
+ * After naming your Actions project, click on "BUILD" under Dialogflow.
  * Click "Dialogflow V2 API" when Dialogflow opens. Click "CREATE" at the top.
  * Then, click the settings button, the gear icon at the top left.
  * Select the "Export and Import" tab.
@@ -28,6 +30,38 @@ Before you start, you need to know how much work this entails:
  * Fill out the BASIC AUTH password to whatever you wish. Then fill in the
    *server/config.yaml* that you'll create in the Server Setup section with
    this same password.
+
+Setup Oauth2:
+ * On your Google Actions project, select "Account linking (optional)" and click ADD.
+ * Select "Authorization Code". Next.
+ * Fill out:
+   - Client ID -- e.g. google-assistant
+   - Client Secret -- generate with `pwgen 30 1` for example
+   - Auth URL -- https://example.com:443/linux-control/oauth/auth
+   - Token URL -- https://example.com:443/linux-control/oauth/token
+ * Under Server Setup, fill these in as *oauth_google_{id,secret,uri}* in your
+   *server/config.yaml* file.
+
+Fill out app information:
+ * On your Google Actions project, select "App information" and click EDIT.
+ * Fill out name, pronunciation, description, etc.
+ * Fill out the invocations, e.g. "Talk to Linux", "Linux Control", "Linux", "Ask Linux", and "Ask Linux Control".
+
+When you are ready to use it (i.e., after you follow the Setup Server section):
+ * On Dialogflow, click "Integrations" tab on the left.
+ * Click big "Google Assistant".
+ * Explicit invocation: Default Welcome Intent.
+ * Implicit invocation: Computer Command and Computer Query.
+ * Check "Sign in required" on all.
+ * Click "TEST".
+ * Pull out your phone, linked to your account. Say "Talk to Linux Control."
+ * If you've set up the server and everything, it should say that it's not
+   linked to your account and give a button to click that'll take you to your
+   login page. Click on that. Click "login" when it says to login and then
+   reload the page. Link to your Google account. Then click the back button to
+   get you back to the login then reload page. Click "reload." Then it should
+   be linked to your account.
+ * Say something like, "Ask Linux Control where is my laptop"
 
 ## Raspberry Pi Setup
 For this example, I'll be showing how to set it up on a Raspberry Pi running
@@ -119,7 +153,7 @@ it ages ago and they say give it a few business days.
 
 First time:
  * Enter email
- * Enter domains: domain.tld www.domain.tld
+ * Enter domains: example.com www.example.com
  * Check DNS verification
 
 Note, if you use Namecheap, make sure you don't put the "domain.tld" part of

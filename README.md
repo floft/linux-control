@@ -271,10 +271,10 @@ making sure to prepend with a / if it's not blank. Note that the
             return 301 https://$host$request_uri;
         }
 
-        # If connecting from external port 9999, then we're probably not on
-        # the local network, so we need to access from external port
+        # If connecting from external port 8080, then we're probably not on
+        # the local network, so we need to access from external HTTPS port
         server {
-            listen 9999;
+            listen 8080; # External HTTP port, if you have it
             server_name localhost;
             return 301 https://$host:9999$request_uri;
         }

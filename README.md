@@ -16,6 +16,11 @@ Before you start, you need to know how much work this entails:
  * On your laptop and/or desktop, setup the Linux Control client ("Setup
    Client" section)
 
+Note: the client code is somewhat messy. For example, locking/unlocking code
+probably only works for Gnome at the moment. Opening app code searches Gnome
+Tracker database to find .destkop file, then does system call to open with
+"dex".
+
 ## Google Action Project
 Create a new [Google Actions project](https://console.actions.google.com/).
 

@@ -6,7 +6,7 @@ class MainHandler(BaseHandler):
 
         # If already logged in, forward to the account page
         if userid:
-            self.redirect("/linux-control/account")
+            self.redirect(self.config["root"]+"/account")
         else:
             self.write("""
 <html>
@@ -14,8 +14,8 @@ class MainHandler(BaseHandler):
     <body>
         <h1>Linux Control</h1>
 
-        <div><a href="/linux-control/auth/login">Login</a></div>
+        <div><a href="{root}/auth/login">Login</a></div>
     </body>
 </html>
-            """)
+            """.format(root=self.config["root"]))
 

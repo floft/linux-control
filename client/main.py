@@ -364,12 +364,13 @@ if __name__ == "__main__":
     with open(configFile, "r") as f:
         config = yaml.load(f)
 
+    assert "server" in config, "Must define server in config"
     assert "root" in config, "Must define root in config"
     assert "id" in config, "Must define id in config"
     assert "token" in config, "Must define token in config"
 
     # URL of web socket
-    url = "wss://"+config["root"]+"/con?"+\
+    url = "wss://"+config["server"]+config["root"]+"/con?"+\
             "id="+url_escape(str(config["id"]))+\
             "&token="+url_escape(config["token"])
 

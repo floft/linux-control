@@ -1,5 +1,7 @@
-# https and websocket URL
-root: domain.tld:port/path-to-linux-control
+# https and websocket URL, (wss|https)://server/root
+# Note: if root is not blank, it needs a / at the beginning
+server: domain.tld:port
+root: /linux-control
 # The user ID given in the web browser for your account
 id: ID
 # Get from logging in from a web browser

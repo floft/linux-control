@@ -178,8 +178,10 @@ Setup the *nginx.conf* similar to [Tornado's
 example](http://www.tornadoweb.org/en/stable/guide/running.html).  Or, look at
 the one below similar to what I used, making sure to replace your domain names
 and port 9999 with whatever external port you use. I also have a separate
-website on the root / and put Linux Control under */linux-control*. Note that
-the */linux-control/con* is for the Websocket that the clients will connect to.
+website on the root / and put Linux Control under */linux-control*. If you
+change this, then in your *config.yaml* files set *root* to this directory,
+making sure to prepend with a / if it's not blank. Note that the
+*/linux-control/con* is for the Websocket that the clients will connect to.
 
     worker_processes 1;
 

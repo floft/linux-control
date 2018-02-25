@@ -1,5 +1,7 @@
-# https and websocket URL
-root: domain.tld:port/path-to-linux-control
+# https and websocket URL, (wss|https)://server/root
+# Note: if root is not blank, it needs a / at the beginning
+server: domain.tld:port
+root: /linux-control
 # Run Tornado on this port
 port: 8888
 # Connecting to Redis

@@ -9,7 +9,7 @@ class GoogleOAuth2LoginHandler(BaseHandler,
     def get(self):
         if self.get_argument('code', False):
             access = yield self.get_authenticated_user(
-                redirect_uri='https://wopto.net:42770/linux-control/auth/login',
+                redirect_uri='https://'+self.config['server']+self.config['root']+'/auth/login',
                 code=self.get_argument('code'))
             user = yield self.oauth2_request(
                 "https://www.googleapis.com/oauth2/v1/userinfo",
@@ -25,10 +25,10 @@ class GoogleOAuth2LoginHandler(BaseHandler,
             # (required for OAuth2 linking to user account for instance)
             self.set_secure_cookie('id', str(userid))
 
-            self.redirect('/linux-control/account')
+            self.redirect(self.config['root']+'/account')
         else:
             yield self.authorize_redirect(
-                redirect_uri='https://wopto.net:42770/linux-control/auth/login',
+                redirect_uri='https://'+self.config['server']+self.config['root']+'/auth/login',
                 client_id=self.settings['google_oauth']['key'],
                 scope=['profile', 'email'],
                 response_type='code',
@@ -37,4 +37,4 @@ class GoogleOAuth2LoginHandler(BaseHandler,
 class LogoutHandler(BaseHandler):
     def get(self):
         self.clear_cookie('id')
-        self.redirect('/linux-control')
+        self.redirect(self.config['root'] + '/')

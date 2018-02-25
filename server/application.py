@@ -18,6 +18,9 @@ from server.websocket import ClientConnection
 
 class Application(tornado.web.Application):
     def __init__(self, config):
+        # Save config, e.g. we need root/server later
+        self.config = config
+
         #
         # Database
         #
@@ -76,8 +79,8 @@ class Application(tornado.web.Application):
             client_store=client_store,
             token_generator=token_generator
         )
-        self.auth_controller.authorize_path = '/linux-control/oauth/auth'
-        self.auth_controller.token_path = '/linux-control/oauth/token'
+        self.auth_controller.authorize_path = config["root"]+"/oauth/auth"
+        self.auth_controller.token_path = config["root"]+"/oauth/token"
 
         # Add Client Credentials to OAuth2 controller
         self.site_adapter = OAuth2SiteAdapter()
@@ -94,16 +97,15 @@ class Application(tornado.web.Application):
         # Tornado
         #
         handlers = [
-            (r"/linux-control", MainHandler),
-            (r"/linux-control/", MainHandler),
-            (r"/linux-control/account", AccountHandler),
-            (r"/linux-control/dialogflow", DialogFlowHandler, dict(credentials=credentials)),
-            (r"/linux-control/auth/login", GoogleOAuth2LoginHandler),
-            (r"/linux-control/auth/logout", LogoutHandler),
-            (r"/linux-control/con", ClientConnection),
+            (config["root"], MainHandler),
+            (config["root"]+"/", MainHandler),
+            (config["root"]+"/account", AccountHandler),
+            (config["root"]+"/dialogflow", DialogFlowHandler, dict(credentials=credentials)),
+            (config["root"]+"/auth/login", GoogleOAuth2LoginHandler),
+            (config["root"]+"/auth/logout", LogoutHandler),
+            (config["root"]+"/con", ClientConnection),
             (self.auth_controller.authorize_path, OAuth2Handler, dict(provider=self.auth_controller)),
             (self.auth_controller.token_path, OAuth2Handler, dict(provider=self.auth_controller)),
-            #(r"/linux-control/foo", FooHandler, dict(provider=self.auth_controller))
         ]
         settings = dict(
             websocket_ping_interval=60, # ping every minute
@@ -114,7 +116,7 @@ class Application(tornado.web.Application):
                 'key': config['oauth_client_id'],
                 'secret': config['oauth_client_secret']
             },
-            login_url="/linux-control/auth/login",
+            login_url=config["root"]+"/auth/login",
             debug=options.debug,
         )
         super(Application, self).__init__(handlers, **settings)

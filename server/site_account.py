@@ -5,20 +5,6 @@ import tornado.escape
 from server.base import BaseHandler
 
 class AccountHandler(BaseHandler):
-    """
-        <!--
-        <script>
-        var ws = new WebSocket("wss://wopto.net:42770/linux-control/con");
-        ws.onopen = function() {
-           ws.send("Hello, world");
-        };
-        ws.onmessage = function (evt) {
-           alert(evt.data);
-        };
-        </script>
-        -->
-    """
-
     TEMPLATE = """
 <html>
     <head><title>Linux Control</title></head>
@@ -39,7 +25,7 @@ class AccountHandler(BaseHandler):
             {% module xsrf_form_html() %}
         </form>
 
-        <div><a href="/linux-control/auth/logout">Logout</a></div>
+        <div><a href="{{ root }}/auth/logout">Logout</a></div>
     </body>
 </html>
     """
@@ -84,6 +70,7 @@ class AccountHandler(BaseHandler):
                 desktop_token=desktop_token,
                 laptop_mac=laptop_mac,
                 desktop_mac=desktop_mac,
+                root=self.config["root"],
             ))
 
     @tornado.gen.coroutine

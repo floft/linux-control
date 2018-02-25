@@ -14,7 +14,7 @@ class OAuth2Handler(BaseHandler, oauth2.web.tornado.OAuth2Handler):
 <html>
     <head><title>OAuth2 Authorization</title></head>
     <body>
-        <p>Please <a href='/linux-control/auth/login' target='_blank'>Login</a>,
+        <p>Please <a href='{root}/auth/login' target='_blank'>Login</a>,
         then <a href='javascript:window.location.reload()'>Reload</a> this page.</p>
     </body>
 </html>
@@ -35,14 +35,14 @@ class OAuth2Handler(BaseHandler, oauth2.web.tornado.OAuth2Handler):
             response = self._dispatch_request()
             self._map_response(response)
         else:
-            self.write(self.TEMPLATE)
+            self.write(self.TEMPLATE.format(root=self.config["root"]))
 
     def post(self):
         if self.request.path == self.provider.token_path or self.get_current_user():
             response = self._dispatch_request()
             self._map_response(response)
         else:
-            self.write(self.TEMPLATE)
+            self.write(self.TEMPLATE.format(root=self.config["root"]))
 
 class OAuth2SiteAdapter(AuthorizationCodeGrantSiteAdapter):
     """

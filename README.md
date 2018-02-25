@@ -325,7 +325,7 @@ Last of all, copy the example config, edit it, then start tornado:
 ## Client Setup
 Install appropriate dependencies:
 
-    sudo pacman -S python-psutil dexd python-yaml
+    sudo pacman -S python-psutil dex python-yaml
     aursync python-pulse-control-git
     pip install --user plocate python-libxdo
 

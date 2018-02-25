@@ -166,8 +166,12 @@ class WSClient:
 
                 if len(results) > 0:
                     fn = results[0][7:] # remove file://
-                    msg = "Opening "+fn
-                    self.ioloop.add_callback(lambda: self.cmd_openApp(fn))
+                    name = yield self.getAppName(fn)
+                    if name:
+                        msg = "Opening "+name
+                    else:
+                        msg = "Opening "+fn
+                    self.ioloop.add_callback(lambda: self.cmd_openApp(fn, name))
                 else:
                     msg = "No results found"
             else:
@@ -271,12 +275,13 @@ class WSClient:
 
         return results
 
-    @run_on_executor
-    def cmd_openApp(self, fn):
-        subprocess.Popen(['dex', fn], close_fds=True)
-
-        # Try to get the name of this program
+    @tornado.gen.coroutine
+    def getAppName(self, fn):
+        """
+        Try to get the name of the program from the .desktop file
+        """
         name = None
+
         with open(fn, 'r') as f:
             for line in f:
                 m = re.match(r"Name\s?=(.*)$", line)
@@ -284,6 +289,12 @@ class WSClient:
                 if m and len(m.groups()) > 0:
                     name = m.groups()[0]
                     break
+
+        return name
+
+    @run_on_executor
+    def cmd_openApp(self, fn, name=None):
+        subprocess.Popen(['dex', fn], close_fds=True)
 
         if name:
             # Hopefully the app has started by now

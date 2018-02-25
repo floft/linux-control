@@ -7,6 +7,8 @@ from pywakeonlan.wakeonlan import send_magic_packet
 from server.base import BaseHandler
 
 class DialogFlowHandler(BasicAuthMixin, BaseHandler):
+    lastComputer = {}
+
     def initialize(self, credentials):
         self.credentials = credentials
 
@@ -71,6 +73,13 @@ class DialogFlowHandler(BasicAuthMixin, BaseHandler):
                 x = params['X']
                 url = params['url']
 
+                # Update last computer used
+                if computer:
+                    self.lastComputer[userid] = computer
+                # If no computer specified, use last, if available
+                elif userid in self.lastComputer:
+                    computer = self.lastComputer[userid]
+
                 # Only command we handle is the WOL packet
                 if command == "power on":
                     if computer:
@@ -101,6 +110,13 @@ class DialogFlowHandler(BasicAuthMixin, BaseHandler):
                 value = params['Value']
                 x = params['X']
                 computer = params['Computer']
+
+                # Update last computer used
+                if computer:
+                    self.lastComputer[userid] = computer
+                # If no computer specified, use last, if available
+                elif userid in self.lastComputer:
+                    computer = self.lastComputer[userid]
 
                 # Only query we handle is the "where is my laptop/desktop"
                 if value == "where":

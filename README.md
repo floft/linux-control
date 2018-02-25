@@ -23,9 +23,10 @@ Tracker database to find .destkop file, then does system call to open with
 
 ## Currently supported commands
 Each of these works for "laptop" or "desktop", but I'll use "laptop" for these
-examples. You first would say "Okay Google, talk to Linux Control" or append
-these with "Ask Linux Control." Note this also works for variants of these, but
-this gives the idea.
+examples. You first would say "Okay Google, talk to Linux Control" or prepend
+these with "Ask Linux Control," e.g. "Ask Linux Control to turn on my laptop."
+Note the exact wording here is not required, but these will give the general
+idea.
 
  * Commands
    - Turn on my laptop. *(via Wake-on-LAN, i.e. only works if your laptop/desktop is on the same LAN as the server, and you need to set the MAC address via the website)*

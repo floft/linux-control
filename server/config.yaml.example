@@ -1,0 +1,19 @@
+# https and websocket URL
+root: domain.tld:port/path-to-linux-control
+# Run Tornado on this port
+port: 8888
+# Connecting to Redis
+redis_host: 127.0.0.1
+redis_port: 6379
+# Generate with `openssl rand -hex 30` for example
+cookie_secret: SECRET
+# Get these from https://console.cloud.google.com/apis/credentials
+oauth_client_id: SOMEID.apps.googleusercontent.com
+oauth_client_secret: SECRET
+# For the OAuth2 provider, generate secret with `pwgen 30 1`
+oauth_google_id: google-assistant
+oauth_google_secret: SECRET
+oauth_google_uri: https://oauth-redirect.googleusercontent.com/r/YOUR-ACTION-ID
+# For Dialogflow fullfillment
+http_auth_user: USER
+http_auth_pass: PASS

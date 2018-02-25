@@ -1,2 +1,3 @@
 run.sh
+*.yaml
 __pycache__

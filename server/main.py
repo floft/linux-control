@@ -1,4 +1,6 @@
 import os
+import sys
+import yaml
 import logging
 import traceback
 import tornado.ioloop
@@ -8,28 +10,35 @@ import tornado.httpserver
 from tornado.options import define, options
 from server.application import Application
 
-define("port", default=8888, help="run on the given port", type=int)
 define("debug", default=False, help="run in debug mode")
-# For OAuth2 data
-define("redis_host", default="127.0.0.1", help="database host")
-define("redis_port", default="6379", help="database port")
 
 def main():
-    assert 'COOKIE_SECRET' in os.environ, "Must define COOKIE_SECRET environment variable"
-    assert 'OAUTH_CLIENT_ID' in os.environ, "Must define OAUTH_CLIENT_ID environment variable"
-    assert 'OAUTH_CLIENT_SECRET' in os.environ, "Must define OAUTH_CLIENT_SECRET environment variable"
-    assert 'OAUTH_GOOGLE_SECRET' in os.environ, "Must define OAUTH_GOOGLE_SECRET environment variable"
-    assert 'OAUTH_GOOGLE_URI' in os.environ, "Must define OAUTH_GOOGLE_URI environment variable"
-    assert 'HTTP_AUTH_USER' in os.environ, "Must define HTTP_AUTH_USER environment variable"
-    assert 'HTTP_AUTH_PASS' in os.environ, "Must define HTTP_AUTH_PASS environment variable"
+    # Parse config
+    if len(sys.argv) < 2:
+        raise RuntimeError("python3 -m server.main config.yaml [--debug]")
+
+    configFile = sys.argv[1]
+    config = {}
+
+    with open(configFile, "r") as f:
+        config = yaml.load(f)
+
+    assert "cookie_secret" in config, "Must define cookie_secret in config"
+    assert "oauth_client_id" in config, "Must define oauth_client_id in config"
+    assert "oauth_client_secret" in config, "Must define oauth_client_secret in config"
+    assert "oauth_google_secret" in config, "Must define oauth_google_secret in config"
+    assert "oauth_google_uri" in config, "Must define oauth_google_uri in config"
+    assert "http_auth_user" in config, "Must define http_auth_user in config"
+    assert "http_auth_pass" in config, "Must define http_auth_pass in config"
 
     tornado.options.parse_command_line()
-    http_server = tornado.httpserver.HTTPServer(Application())
-    http_server.listen(options.port)
+    http_server = tornado.httpserver.HTTPServer(Application(config))
+    http_server.listen(config["port"])
     tornado.ioloop.IOLoop.current().start()
 
 if __name__ == "__main__":
     # For now, show info
     logging.getLogger().setLevel(logging.INFO)
 
+    # Run the server
     main()

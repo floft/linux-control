@@ -17,11 +17,12 @@ from server.oauth2_login import GoogleOAuth2LoginHandler, LogoutHandler
 from server.websocket import ClientConnection
 
 class Application(tornado.web.Application):
-    def __init__(self):
+    def __init__(self, config):
         #
         # Database
         #
-        self.redis = redis.StrictRedis(host=options.redis_host, port=options.redis_port, db=0)
+        self.redis = redis.StrictRedis(host=config['redis_host'],
+                port=config['redis_port'], db=0)
 
         #
         #
@@ -46,16 +47,16 @@ class Application(tornado.web.Application):
         # OAuth2 provider
         #
         token_store = oauth2.store.redisdb.TokenStore(
-            host=options.redis_host, port=options.redis_port, db=0, prefix="oauth2")
+            host=config['redis_host'], port=config['redis_port'], db=0, prefix="oauth2")
         client_store = oauth2.store.redisdb.ClientStore(
-            host=options.redis_host, port=options.redis_port, db=0, prefix="oauth2")
+            host=config['redis_host'], port=config['redis_port'], db=0, prefix="oauth2")
 
         # Allow Google Assistant to request access
         client_store.add_client(
-            client_id=os.environ['OAUTH_GOOGLE_ID'],
-            client_secret=os.environ['OAUTH_GOOGLE_SECRET'],
+            client_id=config['oauth_google_id'],
+            client_secret=config['oauth_google_secret'],
             redirect_uris=[
-                os.environ['OAUTH_GOOGLE_URI'],
+                config['oauth_google_uri'],
                 "https://developers.google.com/oauthplayground" # For debugging
             ],
             authorized_grants=[
@@ -87,7 +88,7 @@ class Application(tornado.web.Application):
             expires_in=2592000, reissue_refresh_tokens=True))
 
         # For DialogFlow
-        credentials = { os.environ['HTTP_AUTH_USER']: os.environ['HTTP_AUTH_PASS'] }
+        credentials = { config['http_auth_user']: config['http_auth_pass'] }
 
         #
         # Tornado
@@ -107,11 +108,11 @@ class Application(tornado.web.Application):
         settings = dict(
             websocket_ping_interval=60, # ping every minute
             websocket_ping_timeout=60*3, # close connection if no pong
-            cookie_secret=os.environ['COOKIE_SECRET'],
+            cookie_secret=config['cookie_secret'],
             xsrf_cookies=True,
             google_oauth={
-                'key': os.environ['OAUTH_CLIENT_ID'],
-                'secret': os.environ['OAUTH_CLIENT_SECRET']
+                'key': config['oauth_client_id'],
+                'secret': config['oauth_client_secret']
             },
             login_url="/linux-control/auth/login",
             debug=options.debug,

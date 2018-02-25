@@ -1,6 +1,8 @@
 import os
 import re
+import sys
 import json
+import yaml
 import logging
 import tornado.gen
 import tornado.ioloop
@@ -352,14 +354,27 @@ class WSClient:
         method(False)
 
 if __name__ == "__main__":
-    assert "ID" in os.environ, "Must define ID environment variable"
-    assert "TOKEN" in os.environ, "Must define TOKEN"+\
-        "environment variable, get from https://wopto.net:42770/linux-control"
-    url = "wss://wopto.net:42770/linux-control/con?"+\
-            "id="+url_escape(os.environ['ID'])+\
-            "&token="+url_escape(os.environ['TOKEN'])
+    # Parse config
+    if len(sys.argv) < 2:
+        raise RuntimeError("python3 -m client.main config.yaml")
+
+    configFile = sys.argv[1]
+    config = {}
+
+    with open(configFile, "r") as f:
+        config = yaml.load(f)
+
+    assert "root" in config, "Must define root in config"
+    assert "id" in config, "Must define id in config"
+    assert "token" in config, "Must define token in config"
+
+    # URL of web socket
+    url = "wss://"+config["root"]+"/con?"+\
+            "id="+url_escape(str(config["id"]))+\
+            "&token="+url_escape(config["token"])
 
     # For now, show info
     logging.getLogger().setLevel(logging.INFO)
 
+    # Run the client
     client = WSClient(url)

@@ -21,6 +21,29 @@ probably only works for Gnome at the moment. Opening app code searches Gnome
 Tracker database to find .destkop file, then does system call to open with
 "dex".
 
+## Currently supported commands
+Each of these works for "laptop" or "desktop", but I'll use "laptop" for these
+examples. You first would say "Okay Google, talk to Linux Control" or append
+these with "Ask Linux Control." Note this also works for variants of these, but
+this gives the idea.
+
+ * Commands
+   - Turn on my laptop. *(via Wake-on-LAN, i.e. only works if your laptop/desktop is on the same LAN as the server, and you need to set the MAC address via the website)*
+   - Power off / suspend / reboot my laptop. *(via Systemd)*
+   - Lock/unlock my laptop. *(for Gnome)*
+   - Open Firefox on my laptop. *(looks up .desktop files in Gnome Tracker databse)*
+   - Locate filename on my laptop.
+   - Set volume to 50% on my laptop. *(via Pulseaudio)*
+   - Take a picture on my laptop. *(adds to Dropbox)*
+   - Take a screenshot on my laptop. *(adds to Dropbox)*
+ * Queries
+   - Where is my laptop? *(either "at home" if on same network as server or does GeoIP lookup)*
+   - What is the memory usage of my laptop?
+   - What is the disk usage of my laptop?
+   - What is the battery on my laptop?
+   - What is the CPU usage of my laptop?
+   - Is Firefox open on my laptop?
+
 ## Google Action Project
 Create a new [Google Actions project](https://console.actions.google.com/).
 

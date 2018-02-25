@@ -26,6 +26,7 @@ def main():
     assert "server" in config, "Must define server in config"
     assert "root" in config, "Must define root in config"
     assert "port" in config, "Must define port in config"
+    assert "whitelist_emails" in config, "Must define whitelist_emails in config"
     assert "redis_host" in config, "Must define redis_host in config"
     assert "redis_port" in config, "Must define redis_port in config"
     assert "cookie_secret" in config, "Must define cookie_secret in config"

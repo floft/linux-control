@@ -14,18 +14,27 @@ class GoogleOAuth2LoginHandler(BaseHandler,
             user = yield self.oauth2_request(
                 "https://www.googleapis.com/oauth2/v1/userinfo",
                 access_token=access["access_token"])
-            # Save the user
-            userid = yield self.getUserID(user['email'])
 
-            # If not, create the user
-            if not userid:
-                userid = yield self.createUser(user["email"])
+            # If we have a whitelist, make sure the user is on it
+            if "whitelist_emails" not in self.config or \
+                not isinstance(self.config["whitelist_emails"], list) or \
+                user['email'] in self.config["whitelist_emails"]:
 
-            # If user already in the database, add the ID in our cookie
-            # (required for OAuth2 linking to user account for instance)
-            self.set_secure_cookie('id', str(userid))
+                # Save the user
+                userid = yield self.getUserID(user['email'])
 
-            self.redirect(self.config['root']+'/account')
+                # If not, create the user
+                if not userid:
+                    userid = yield self.createUser(user["email"])
+
+                # If user already in the database, add the ID in our cookie
+                # (required for OAuth2 linking to user account for instance)
+                self.set_secure_cookie('id', str(userid))
+
+                self.redirect(self.config['root']+'/account')
+
+            else:
+                self.redirect(self.config['root']+'/auth/denied')
         else:
             yield self.authorize_redirect(
                 redirect_uri='https://'+self.config['server']+self.config['root']+'/auth/login',
@@ -38,3 +47,19 @@ class LogoutHandler(BaseHandler):
     def get(self):
         self.clear_cookie('id')
         self.redirect(self.config['root'] + '/')
+
+class DeniedHandler(BaseHandler):
+    def get(self):
+            self.write("""
+<html>
+    <head><title>Linux Control</title></head>
+    <body>
+        <h1>Linux Control: Access Denied</h1>
+
+        <div>Your email does not appear to be in the whitelist, so you are not
+        allowed to create an account on this server.</div>
+
+        <div><a href="{root}/auth/login">Try logging in again</a></div>
+    </body>
+</html>
+            """.format(root=self.config["root"]))

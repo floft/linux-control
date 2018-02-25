@@ -2,6 +2,10 @@
 # Note: if root is not blank, it needs a / at the beginning
 server: domain.tld:port
 root: /linux-control
+# If not blank, only allow users with these emails to sign up, e.g. don't let
+# any random person who finds your server use it.
+whitelist_emails:
+    - you@gmail.com
 # Run Tornado on this port
 port: 8888
 # Connecting to Redis

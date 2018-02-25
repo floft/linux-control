@@ -13,7 +13,7 @@ from server.site_main import MainHandler
 from server.site_account import AccountHandler
 from server.dialogflow import DialogFlowHandler
 from server.oauth2_provider import OAuth2Handler, OAuth2SiteAdapter
-from server.oauth2_login import GoogleOAuth2LoginHandler, LogoutHandler
+from server.oauth2_login import GoogleOAuth2LoginHandler, LogoutHandler, DeniedHandler
 from server.websocket import ClientConnection
 
 class Application(tornado.web.Application):
@@ -103,6 +103,7 @@ class Application(tornado.web.Application):
             (config["root"]+"/dialogflow", DialogFlowHandler, dict(credentials=credentials)),
             (config["root"]+"/auth/login", GoogleOAuth2LoginHandler),
             (config["root"]+"/auth/logout", LogoutHandler),
+            (config["root"]+"/auth/denied", DeniedHandler),
             (config["root"]+"/con", ClientConnection),
             (self.auth_controller.authorize_path, OAuth2Handler, dict(provider=self.auth_controller)),
             (self.auth_controller.token_path, OAuth2Handler, dict(provider=self.auth_controller)),

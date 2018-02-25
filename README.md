@@ -327,6 +327,11 @@ Then, copy the example config and edit it:
     cp client/config.yaml{.example,}
     # edit client/config.yaml
 
+You'll have to visit your Linux Control website to get the ID and TOKEN that
+you'll need for the client. It'll show you your user ID and then a token to
+identify your laptop and one to identify your desktop (so it can differentiate
+which computer connection is which).
+
 ### Client using Graphical Environment
 If you're using a graphical environment and want Linux Control to work when you log in, then, first:
 
@@ -360,7 +365,7 @@ user/group you want to run as:
     Description=Linux Control
     [Service]
     Environment=DISPLAY=:0
-    ExecStart=/path/to/linux-control/run-desktop.sh
+    ExecStart=/path/to/linux-control/run.sh
     Restart=always
     RestartSec=3
     User=USERNAME

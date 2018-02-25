@@ -9,10 +9,25 @@ unlock the screen, put to sleep, open or close a program, etc.
 
 Before you start, you need to know how much work this entails:
 
- * Create Google Actions project, select Dialogflow, import project
+ * Create Google Actions project ("Google Action Project" section)
  * Setup port forwarding on your router to some internal server
- * Setup server on that internal server ("Setup Server" section), HTTPS is required
- * On your laptop and/or desktop, setup the client ("Setup Client" section)
+ * Setup Linux Control server on that internal server ("Setup Server" section),
+   HTTPS is required
+ * On your laptop and/or desktop, setup the Linux Control client ("Setup
+   Client" section)
+
+## Google Action Project
+ * Create a new [Google Actions project](https://console.actions.google.com/).
+ * After naming it, click on "BUILD" under Dialogflow.
+ * Click "Dialogflow V2 API" when Dialogflow opens. Click "CREATE" at the top.
+ * Then, click the settings button, the gear icon at the top left.
+ * Select the "Export and Import" tab.
+ * "Restore from Zip" the *dialogflow/Linux-Control.zip* included in this repo.
+ * Click "Fullfillment" tab on the left. Change "example.com:443" to whatever
+   your domain and port are.
+ * Fill out the BASIC AUTH password to whatever you wish. Then fill in the
+   *server/config.yaml* that you'll create in the Server Setup section with
+   this same password.
 
 ## Raspberry Pi Setup
 For this example, I'll be showing how to set it up on a Raspberry Pi running
@@ -125,12 +140,108 @@ Put the *domain-crt.txt* in *fullchain.pem* and the domain-key.txt in
     sudo chmod 0600 /etc/lets-encrypt
     sudo chown -R root:root /etc/lets-encrypt/
 
-Setup the *nginx.conf* similar to
-[Tornado's example](http://www.tornadoweb.org/en/stable/guide/running.html).
+Setup the *nginx.conf* similar to [Tornado's
+example](http://www.tornadoweb.org/en/stable/guide/running.html).  Or, look at
+the one below similar to what I used, making sure to replace your domain names
+and port 9999 with whatever external port you use. I also have a separate
+website on the root / and put Linux Control under */linux-control*. Note that
+the */linux-control/con* is for the Websocket that the clients will connect to.
+
+    worker_processes 1;
+
+    events {
+        worker_connections 1024;
+        use epoll;
+    }
+
+    http {
+        # Enumerate all the Tornado servers here
+        upstream frontends {
+            server 127.0.0.1:8888;
+        }
+
+        include /etc/nginx/mime.types;
+        default_type application/octet-stream;
+
+        keepalive_timeout 65;
+        proxy_read_timeout 200;
+        sendfile on;
+        tcp_nopush on;
+        tcp_nodelay on;
+        gzip on;
+        gzip_min_length 1000;
+        gzip_proxied any;
+        gzip_types text/plain text/html text/css text/xml
+                   application/x-javascript application/xml
+                   application/atom+xml text/javascript;
+
+        # Only retry if there was a communication error, not a timeout
+        # on the Tornado server (to avoid propagating "queries of death"
+        # to all frontends)
+        proxy_next_upstream error;
+
+        server {
+            listen 443 ssl default_server;
+            listen 9999 ssl default_server;
+            server_name domain.tld www.domain.tld;
+            ssl_certificate /etc/lets-encrypt/fullchain.pem;
+            ssl_certificate_key /etc/lets-encrypt/privkey.pem;
+
+            location / {
+                root   /srv/http/www;
+                index  index.html index.htm;
+            }
+
+            location /linux-control {
+                proxy_pass_header Server;
+                proxy_set_header Host $http_host;
+                proxy_redirect off;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Scheme $scheme;
+                proxy_pass http://frontends;
+            }
+
+            location /linux-control/con {
+                proxy_pass_header Server;
+                proxy_set_header Host $http_host;
+                proxy_redirect off;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Scheme $scheme;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_pass http://frontends;
+
+                proxy_http_version 1.1;
+                proxy_set_header Upgrade $http_upgrade;
+                proxy_set_header Connection "upgrade";
+                proxy_read_timeout 600;
+            }
+
+            error_page  404              /404.html;
+            error_page  500 502 503 504  /50x.html;
+            location = /50x.html {
+                root   /usr/share/nginx/html;
+            }
+        }
+
+        # If internal, then port 443 works
+        server {
+            listen 80;
+            server_name localhost;
+            return 301 https://$host$request_uri;
+        }
+
+        # If connecting from external port 9999, then we're probably not on
+        # the local network, so we need to access from external port
+        server {
+            listen 9999;
+            server_name localhost;
+            return 301 https://$host:9999$request_uri;
+        }
+    }
+
 Finally, restart *nginx*:
 
     sudo systemctl restart nginx
-
 
 ### Tornado
 Install Tornado and other dependencies of the Linux Control server:

@@ -329,6 +329,13 @@ Then, copy the example config and edit it:
     cp client/config.yaml{.example,}
     # edit client/config.yaml
 
+Make sure you set the server, root, and cookie secret. Get the OAuth2 client
+id/secret from Google. Set the OAuth2 provider id/secret to what you gave to
+Google in the Google Actions Project instructions earlier. Make sure you set
+the URI to point to your project id (see Project ID under the settings of your
+Google Actions Project, gear at top left). Set the HTTP BASIC AUTH user/pass
+to what you gave Dialogflow earlier.
+
 You'll have to visit your Linux Control website to get the ID and TOKEN that
 you'll need for the client. It'll show you your user ID and then a token to
 identify your laptop and one to identify your desktop (so it can differentiate

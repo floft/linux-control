@@ -47,7 +47,7 @@ idea.
    - Power off / suspend / reboot my laptop. *(via Systemd)*
    - Lock/unlock my laptop. *(for Gnome)*
    - Open Firefox on my laptop. *(looks up .desktop files in Gnome Tracker database)*
-   - Locate filename on my laptop. *(via mlocate database, and may timeout since Dialogflow requires response in less than 5 seconds)*
+   - Locate filename on my laptop. *(looks up file in Gnome Tracker database)*
    - Set volume to 50% on my laptop. *(via Pulseaudio)*
    - Take a picture on my laptop. *(adds to Dropbox)*
    - Take a screenshot on my laptop. *(adds to Dropbox)*

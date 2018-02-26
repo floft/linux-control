@@ -51,6 +51,8 @@ idea.
    - Set volume to 50% on my laptop. *(via Pulseaudio)*
    - Take a picture on my laptop. *(adds to Dropbox)*
    - Take a screenshot on my laptop. *(adds to Dropbox)*
+   - Locate filename on my laptop.
+   - Fetch 3 *(fetch item 3 from locate results, symlink into Dropbox)*
  * Queries
    - Where is my laptop? *(either "at home" if on same network as server or does GeoIP lookup from IP it's connected to server from)*
    - What is the memory usage of my laptop?
@@ -58,6 +60,7 @@ idea.
    - What is the battery on my laptop?
    - What is the CPU usage of my laptop?
    - Is Firefox open on my laptop?
+ * Exit with "quit"
 
 Note: this is more proof-of-concept and won't necessarily work with all system
 setups. For example, the locking/unlocking is for Gnome at the moment and

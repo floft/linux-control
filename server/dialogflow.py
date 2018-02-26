@@ -73,6 +73,7 @@ class DialogFlowHandler(BasicAuthMixin, BaseHandler):
                 computer = params['Computer']
                 x = params['X']
                 url = params['url']
+                number = params['number']
 
                 # Update last computer used
                 if computer:
@@ -96,7 +97,7 @@ class DialogFlowHandler(BasicAuthMixin, BaseHandler):
                 else:
                     if userid in self.clients and computer in self.clients[userid]:
                         self.clients[userid][computer].write_message(json.dumps({
-                            "command": { "command": command, "x": x, "url": url }
+                            "command": { "command": command, "x": x, "url": url, "number": number }
                         }))
                         response, longResponse = yield self.clients[userid][computer].wait_response()
 

@@ -8,7 +8,7 @@ import tornado.gen
 import tornado.ioloop
 import tornado.websocket
 import tornado.httpclient
-from tornado.escape import url_escape
+from tornado.escape import url_escape, url_unescape
 
 import tornado.queues
 from tornado.concurrent import run_on_executor
@@ -39,6 +39,9 @@ class WSClient:
         self.ws = None
         self.connect()
         self.executor = ThreadPoolExecutor(max_workers=max_workers)
+
+        # Keep track of which files have been found, so you can fetch them
+        self.locateResults = {}
 
         # Keep connecting if it dies, every minute
         tornado.ioloop.PeriodicCallback(self.keep_alive, 60000, io_loop=self.ioloop).start()
@@ -86,7 +89,8 @@ class WSClient:
                     command = msg["command"]["command"]
                     x = msg["command"]["x"]
                     url = msg["command"]["url"]
-                    result, longResult = yield self.processCommand(command, x, url)
+                    number = msg["command"]["number"]
+                    result, longResult = yield self.processCommand(command, x, url, number)
                 else:
                     logging.warning("Unknown message: " + str(msg))
 
@@ -144,25 +148,25 @@ class WSClient:
         return msg, longMsg
 
     @tornado.gen.coroutine
-    def processCommand(self, command, x, url):
+    def processCommand(self, command, x, url, number):
         msg = "Unknown command"
         longMsg = None
 
         if command == "power off":
             if self.can_poweroff():
-                self.ioloop.add_timeout(datetime.timedelta(seconds=2), self.cmd_poweroff)
+                self.ioloop.add_timeout(datetime.timedelta(seconds=3), self.cmd_poweroff)
                 msg = "Powering off"
             else:
                 msg = "Cannot power off"
         elif command == "sleep":
             if self.can_sleep():
-                self.ioloop.add_timeout(datetime.timedelta(seconds=2), self.cmd_sleep)
+                self.ioloop.add_timeout(datetime.timedelta(seconds=3), self.cmd_sleep)
                 msg = "Sleeping"
             else:
                 msg = "Cannot sleep"
         elif command == "reboot":
             if self.can_reboot():
-                self.ioloop.add_timeout(datetime.timedelta(seconds=2), self.cmd_reboot)
+                self.ioloop.add_timeout(datetime.timedelta(seconds=3), self.cmd_reboot)
                 msg = "Rebooting"
             else:
                 msg = "Cannot reboot"
@@ -202,28 +206,64 @@ class WSClient:
                 except tornado.gen.TimeoutError:
                     msg = "Timed out"
                 else:
-                    logging.info("Query: "+x+" Results: "+str(results))
+                    self.locateResults = {}
+
                     if results:
                         msg = "Found "+str(len(results))+" results"
-                        longMsg = "Results:\n" + "\n".join(results)
+                        longMsg = "Results:\n"
+
+                        for i, r in enumerate(results):
+                            self.locateResults[i+1] = url_unescape(r)
+                            longMsg += str(i+1) + ") "+r+"\n"
                     else:
                         msg = "No results found"
             else:
                 msg = "Missing search query"
 
         elif command == "fetch":
-            msg = "Not implemented yet"
-        elif command == "set volume":
-            try:
-                volume = int(re.search(r'\d+', x).group())
-            except ValueError:
-                msg = "Invalid percentage: "+x
+            if number:
+                try:
+                    item = int(re.search(r'\d+', number).group())
+                except ValueError:
+                    msg = "Invalid item number: "+number
+                except AttributeError:
+                    msg = "Invalid item number: "+number
+                else:
+                    if item in self.locateResults:
+                        # Input filename, what we saved from the locate command
+                        inputFile = self.locateResults[item]
+
+                        # Output filename
+                        ext = os.path.splitext(inputFile)[-1]
+                        fn = datetime.datetime.now().strftime(
+                                "LinuxControl-Fetch-%Y-%m-%d-%Hh-%Mm-%Ss")+ext
+                        outputFile = os.path.join(os.environ["HOME"], "Dropbox", fn)
+
+                        msg = "Fetching item "+str(item)
+                        longMsg = "Fetching item "+str(item)+": copying"+ \
+                            inputFile+" to "+outputFile
+                        self.ioloop.add_callback(lambda: self.cmd_fetchFile(
+                            inputFile, outputFile))
+                    else:
+                        msg = "Item not found in last locate results"
             else:
-                with pulsectl.Pulse('setting-volume') as pulse:
-                    for sink in pulse.sink_list():
-                        pulse.volume_set_all_chans(sink, volume/100.0)
-                msg = "Volume set"
-                longMsg = "Volume set to "+str(volume)+"%"
+                msg = "Please specify which item of your locate command to fetch."
+        elif command == "set volume":
+            if number:
+                try:
+                    volume = int(re.search(r'\d+', number).group())
+                except ValueError:
+                    msg = "Invalid percentage: "+number
+                except AttributeError:
+                    msg = "Invalid percentage: "+number
+                else:
+                    with pulsectl.Pulse('setting-volume') as pulse:
+                        for sink in pulse.sink_list():
+                            pulse.volume_set_all_chans(sink, volume/100.0)
+                    msg = "Volume set"
+                    longMsg = "Volume set to "+str(volume)+"%"
+            else:
+                msg = "Please specify volume percentage"
         elif command == "stop":
             msg = "Not implemented yet"
         elif command == "take a picture":
@@ -255,6 +295,13 @@ class WSClient:
         Take Gnome screenshot
         """
         os.system("gnome-screenshot -f '%s'" % filename)
+
+    @run_on_executor
+    def cmd_fetchFile(self, inputFile, outputFile):
+        """
+        Copy file to Dropbox to make it accessible from phone
+        """
+        os.symlink(inputFile, outputFile)
 
     @run_on_executor
     def cmd_image(self, filename):

@@ -60,7 +60,8 @@ class DialogFlowHandler(BasicAuthMixin, BaseHandler):
             self.set_header("Content-type", "application/json")
             return
 
-        response="Sorry, I'm not sure how to answer that."
+        response = "Sorry, I'm not sure how to answer that."
+        longResponse = None
 
         # Determine command/query and respond appropriately
         try:
@@ -90,17 +91,21 @@ class DialogFlowHandler(BasicAuthMixin, BaseHandler):
                             response = "Woke your "+computer
                         else:
                             response = "Your "+computer+" is not set up for wake-on-LAN"
+                    else:
+                        response = "Please specify which computer you are asking about"
                 else:
                     if userid in self.clients and computer in self.clients[userid]:
                         self.clients[userid][computer].write_message(json.dumps({
                             "command": { "command": command, "x": x, "url": url }
                         }))
-                        response = yield self.clients[userid][computer].wait_response()
+                        response, longResponse = yield self.clients[userid][computer].wait_response()
 
                         if not response:
                             response = "Command sent to "+computer
-                    else:
+                    elif computer:
                         response = "Your "+computer+" is not currently online"
+                    else:
+                        response = "Please specify which computer you are asking about"
 
                     # TODO
                     # If this takes too long, then immediately respond "Command sent to laptop"
@@ -145,12 +150,14 @@ class DialogFlowHandler(BasicAuthMixin, BaseHandler):
                         self.clients[userid][computer].write_message(json.dumps({
                             "query": { "value": value, "x": x }
                         }))
-                        response = yield self.clients[userid][computer].wait_response()
+                        response, longResponse = yield self.clients[userid][computer].wait_response()
 
                         if not response:
                             response = "Your "+computer+" did not respond"
-                    else:
+                    elif computer:
                         response = "Your "+computer+" is not currently online"
+                    else:
+                        response = "Please specify which computer you are asking about"
         except KeyError:
             pass
 
@@ -159,7 +166,24 @@ class DialogFlowHandler(BasicAuthMixin, BaseHandler):
         #"outputContexts": [ { object(Context) } ],
         #"followupEventInput": { object(EventInput) },
         #"fulfillmentMessages": [ { response } ],
-        json_response = json.dumps({ "fulfillmentText": response })
+
+        # If desired, display one thing and say another. This is useful for
+        # example when the displayed text is a file name and you only want to
+        # read the most relevant part of it.
+        if longResponse:
+            json_response = json.dumps({
+                "fulfillmentMessages": [{
+                    "platform": "ACTIONS_ON_GOOGLE",
+                    "simpleResponses": {
+                        "simpleResponses": [{
+                            "textToSpeech": response,
+                            "displayText": longResponse
+                        }]
+                    }
+                }]})
+        else:
+            json_response = json.dumps({ "fulfillmentText": response })
+
         self.write(json_response)
         self.set_header("Content-type", "application/json")
 

@@ -61,8 +61,12 @@ class WSClient:
     def run(self):
         try:
             while True:
+                result = None
+                longResult = None
+
                 msg = yield self.ws.read_message()
 
+                # If closed, break; otherwise, load message JSON data
                 if msg is None:
                     logging.info("Connection closed")
                     self.ws = None
@@ -70,26 +74,32 @@ class WSClient:
                 else:
                     msg = json.loads(msg)
 
+                # Process message
                 if "error" in msg:
                     logging.error(msg["error"])
                     break
                 elif "query" in msg:
                     value = msg["query"]["value"]
                     x = msg["query"]["x"]
-                    result = yield self.processQuery(value, x)
-                    self.ws.write_message(json.dumps({
-                        "response": result
-                    }))
+                    result, longResult = yield self.processQuery(value, x)
                 elif "command" in msg:
                     command = msg["command"]["command"]
                     x = msg["command"]["x"]
                     url = msg["command"]["url"]
-                    result = yield self.processCommand(command, x, url)
-                    self.ws.write_message(json.dumps({
-                        "response": result
-                    }))
+                    result, longResult = yield self.processCommand(command, x, url)
                 else:
                     logging.warning("Unknown message: " + str(msg))
+
+                # Send results back
+                if result and longResult:
+                    self.ws.write_message(json.dumps({
+                        "response": result,
+                        "longResponse": longResult
+                    }))
+                elif result:
+                    self.ws.write_message(json.dumps({
+                        "response": result,
+                    }))
         except KeyboardInterrupt:
             pass
 
@@ -101,6 +111,7 @@ class WSClient:
     @tornado.gen.coroutine
     def processQuery(self, value, x):
         msg = "Unknown query"
+        longMsg = None
 
         if value == "memory":
             msg = "Memory usage is "+"%.1f"%psutil.virtual_memory().percent+"%"
@@ -130,11 +141,12 @@ class WSClient:
             else:
                 msg = "No, "+search+" is not running"
 
-        return msg
+        return msg, longMsg
 
     @tornado.gen.coroutine
     def processCommand(self, command, x, url):
         msg = "Unknown command"
+        longMsg = None
 
         if command == "power off":
             if self.can_poweroff():
@@ -169,8 +181,10 @@ class WSClient:
                     name = yield self.getAppName(fn)
                     if name:
                         msg = "Opening "+name
+                        longMsg = "Opening "+name+": "+fn
                     else:
-                        msg = "Opening "+fn
+                        msg = "Opening"
+                        longMsg = "Opening "+fn
                     self.ioloop.add_callback(lambda: self.cmd_openApp(fn, name))
                 else:
                     msg = "No results found"
@@ -182,13 +196,18 @@ class WSClient:
             msg = "Not implemented yet"
         elif command == "locate":
             if x:
-                # Sometimes the search is slow though
+                # Search might be slow
                 try:
-                    result = yield tornado.gen.with_timeout(datetime.timedelta(seconds=3.5), self.cmd_locate(x))
+                    results = yield tornado.gen.with_timeout(datetime.timedelta(seconds=3.5), self.cmd_locateDB(x))
                 except tornado.gen.TimeoutError:
                     msg = "Timed out"
                 else:
-                    msg = "Results: " + result
+                    logging.info("Query: "+x+" Results: "+str(results))
+                    if results:
+                        msg = "Found "+str(len(results))+" results"
+                        longMsg = "Results:\n" + "\n".join(results)
+                    else:
+                        msg = "No results found"
             else:
                 msg = "Missing search query"
 
@@ -204,19 +223,22 @@ class WSClient:
                     for sink in pulse.sink_list():
                         pulse.volume_set_all_chans(sink, volume/100.0)
                 msg = "Volume set"
+                longMsg = "Volume set to "+str(volume)+"%"
         elif command == "stop":
             msg = "Not implemented yet"
         elif command == "take a picture":
             filename = os.path.join(os.environ["HOME"], "Dropbox",
                     datetime.datetime.now().strftime(
                         "LinuxControl-Picture-%Y-%m-%d-%Hh-%Mm-%Ss.png"))
-            msg = "Taking picture " + filename
+            msg = "Taking picture, saving in Dropbox"
+            longMsg = "Taking picture: " + filename
             self.ioloop.add_callback(lambda: self.cmd_image(filename))
         elif command == "screenshot":
             filename = os.path.join(os.environ["HOME"], "Dropbox",
                     datetime.datetime.now().strftime(
                         "LinuxControl-Screenshot-%Y-%m-%d-%Hh-%Mm-%Ss.png"))
-            msg = "Taking screenshot " + filename
+            msg = "Taking screenshot, saving in Dropbox"
+            longMsg = "Taking screenshot: " + filename
             self.ioloop.add_callback(lambda: self.cmd_screenshot(filename))
         elif command == "download":
             msg = "Not implemented yet"
@@ -225,14 +247,20 @@ class WSClient:
         elif command == "stop recording":
             msg = "Not implemented yet"
 
-        return msg
+        return msg, longMsg
 
     @run_on_executor
     def cmd_screenshot(self, filename):
+        """
+        Take Gnome screenshot
+        """
         os.system("gnome-screenshot -f '%s'" % filename)
 
     @run_on_executor
     def cmd_image(self, filename):
+        """
+        Capture image from webcam with OpenCV
+        """
         cap = cv2.VideoCapture(0)
         ret, frame = cap.read()
 
@@ -241,7 +269,10 @@ class WSClient:
 
     @run_on_executor
     def cmd_locate(self, pattern):
-        # TODO most of the time this times out...
+        """
+        This searches the mlocate DB, but that most of the time times out, so
+        instead probably use the cmd_locateDB() function.
+        """
         mlocatedb="/var/lib/mlocate/mlocate.db"
         results = ""
 
@@ -258,7 +289,38 @@ class WSClient:
         return results
 
     @run_on_executor
+    def cmd_locateDB(self, query):
+        """
+        Find a file in Gnome Tracker DB
+        """
+        results = []
+
+        # See: https://github.com/linuxmint/nemo/blob/master/libnemo-private/nemo-search-engine-tracker.c
+        conn = Tracker.SparqlConnection.get(None)
+
+        # Match each word in query, split on spaces, case insensitive
+        sql = """SELECT nie:url(?urn) WHERE {
+            ?urn a nfo:FileDataObject .
+            FILTER ("""
+
+        for q in query.lower().split():
+            sql += """fn:contains(lcase(nfo:fileName(?urn)),"%s") && """%(q)
+
+        sql += """fn:starts-with(lcase(nie:url(?urn)),"file://"))
+        } ORDER BY DESC(nie:url(?urn)) DESC(nfo:fileName(?urn))"""
+
+        cursor = conn.query(sql, None)
+
+        while cursor.next(None):
+            results.append(cursor.get_string(0)[0].replace("file://",""))
+
+        return results
+
+    @run_on_executor
     def cmd_findApp(self, query):
+        """
+        Find desktop file in Gnome Tracker DB
+        """
         results = []
 
         # See: https://github.com/linuxmint/nemo/blob/master/libnemo-private/nemo-search-engine-tracker.c
@@ -294,6 +356,9 @@ class WSClient:
 
     @run_on_executor
     def cmd_openApp(self, fn, name=None):
+        """
+        Open desktop file with "dex" command, then try to focus the window
+        """
         subprocess.Popen(['dex', fn], close_fds=True)
 
         if name:

@@ -96,6 +96,7 @@ class ClientConnection(BaseHandler,
         If it doesn't come before the timeout, return None
         """
         response = None
+        longResponse = None
         timeout = datetime.timedelta(seconds=4) # DialogFlow's timeout is 5 seconds
 
         try:
@@ -106,4 +107,7 @@ class ClientConnection(BaseHandler,
             if "response" in msg:
                 response = msg["response"]
 
-        return response
+            if "longResponse" in msg:
+                longResponse = msg["longResponse"]
+
+        return response, longResponse

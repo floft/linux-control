@@ -63,7 +63,7 @@ idea.
 
 Note: this is more proof-of-concept and won't necessarily work with all system
 setups. For example, the locking/unlocking is for Gnome at the moment and
-opening app code searches Gnome Tracker database to find .destkop files.
+opening app code searches Gnome Tracker database to find .desktop files.
 
 ## Google Action Project
 Create a new [Google Actions project](https://console.actions.google.com/).
@@ -80,16 +80,27 @@ Setup Dialogflow:
    *server/config.yaml* that you'll create in the Server Setup section with
    this same password.
 
-Setup Oauth2:
+Setup Oauth2 for Assistant to log into your server:
  * On your Google Actions project, select "Account linking (optional)" and click ADD.
  * Select "Authorization Code". Next.
  * Fill out:
    - Client ID -- e.g. google-assistant
    - Client Secret -- generate with `pwgen 30 1` for example
-   - Auth URL -- https://example.com:443/linux-control/oauth/auth
-   - Token URL -- https://example.com:443/linux-control/oauth/token
+   - Auth URL -- *https://example.com:443/linux-control/oauth/auth*
+   - Token URL -- *https://example.com:443/linux-control/oauth/token*
  * Under Server Setup, fill these in as *oauth_google_{id,secret,uri}* in your
    *server/config.yaml* file.
+
+Setup Oauth2 for users to login to website via Google:
+ * Go to [Google API Console](https://console.developers.google.com/apis/credentials)
+   or [Google Cloud Platform](https://console.cloud.google.com/apis/credentials) and
+   create an OAuth client ID for your project.
+ * Copy the client ID and client secret into your "server/config.yaml" file as
+   *oauth_client_{id,secret}*.
+ * Set the authorized Javascript origin to your website, e.g.
+   *https://example.com:443*
+ * Set the authorized redirect URIs to your login path, e.g.
+   *https://example.com:443/linux-control/auth/login*
 
 Fill out app information:
  * On your Google Actions project, select "App information" and click EDIT.

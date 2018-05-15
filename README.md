@@ -103,11 +103,12 @@ Setup Oauth2 for users to login to website via Google:
    *https://example.com:443/linux-control/auth/login*
 
 Fill out app information:
- * On your Google Actions project, select "App information" and click EDIT.
+ * On your Google Actions project, select Deploy --> "Directory information."
  * Fill out name, pronunciation, description, etc.
- * Fill out the invocations, e.g. "Talk to Linux", "Linux Control", "Linux", "Ask Linux", and "Ask Linux Control".
+ * Fill out the invocations, e.g. "Talk to Linux Control", "Linux Control", and
+   "Ask Linux Control".
 
-When you are ready to use it (i.e., after you follow the Setup Server section):
+When you are ready to test it (i.e., after you follow the Setup Server section):
  * On Dialogflow, click "Integrations" tab on the left.
  * Click big "Google Assistant".
  * Explicit invocation: Default Welcome Intent.
@@ -122,6 +123,16 @@ When you are ready to use it (i.e., after you follow the Setup Server section):
    get you back to the login then reload page. Click "reload." Then it should
    be linked to your account.
  * Say something like, "Ask Linux Control where is my laptop"
+
+For longer-term testing:
+ * Go to your [Actions on Google](https://console.actions.google.com) project.
+   Click "Release" under "Deploy".
+ * Under Alpha Release select "Submit for Alpha Release." Then whitelist the
+   emails of up to 20 users who you want to use this release. Share the "Opt-in
+   link" (under whitelisting users) with whoever you want to use it.
+ * Wait a few hours for it to deploy.
+ * If you make changes to DialogFlow, then you'll want to submit another alpha
+   release to update it.
 
 ## Raspberry Pi Setup
 For this example, I'll be showing how to set it up on a Raspberry Pi running

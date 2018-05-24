@@ -31,7 +31,16 @@ class GoogleOAuth2LoginHandler(BaseHandler,
                 # (required for OAuth2 linking to user account for instance)
                 self.set_secure_cookie('id', str(userid))
 
-                self.redirect(self.config['root']+'/account')
+                # Redirect to a particular page (probably "oauth/auth") if
+                # specified, otherwise the account page
+                login_redirect = self.get_secure_cookie("login_redirect")
+                self.clear_cookie("login_redirect")
+
+                if login_redirect:
+                    login_redirect = login_redirect.decode("utf-8")
+                    self.redirect(login_redirect)
+                else:
+                    self.redirect(self.config['root']+'/account')
 
             else:
                 self.redirect(self.config['root']+'/auth/denied')

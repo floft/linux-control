@@ -1,3 +1,4 @@
+import logging
 import tornado.template
 import oauth2.grant
 import oauth2.web.tornado
@@ -10,16 +11,6 @@ class OAuth2Handler(BaseHandler, oauth2.web.tornado.OAuth2Handler):
     """
     Require the user to be authenticated when going to the authorization page
     """
-    TEMPLATE = """
-<html>
-    <head><title>OAuth2 Authorization</title></head>
-    <body>
-        <p>Please <a href='{root}/auth/login' target='_blank'>Login</a>,
-        then <a href='javascript:window.location.reload()'>Reload</a> this page.</p>
-    </body>
-</html>
-    """
-
     def check_xsrf_cookie(self):
         """
         Only check via our auth form, not when Google gets refresh tokens, etc.
@@ -35,14 +26,16 @@ class OAuth2Handler(BaseHandler, oauth2.web.tornado.OAuth2Handler):
             response = self._dispatch_request()
             self._map_response(response)
         else:
-            self.write(self.TEMPLATE.format(root=self.config["root"]))
+            self.set_secure_cookie("login_redirect", self.request.uri)
+            self.redirect(self.config["root"]+"/auth/login")
 
     def post(self):
         if self.request.path == self.provider.token_path or self.get_current_user():
             response = self._dispatch_request()
             self._map_response(response)
         else:
-            self.write(self.TEMPLATE.format(root=self.config["root"]))
+            self.set_secure_cookie("login_redirect", self.request.uri)
+            self.redirect(self.config["root"]+"/auth/login")
 
 class OAuth2SiteAdapter(AuthorizationCodeGrantSiteAdapter):
     """
@@ -54,9 +47,25 @@ class OAuth2SiteAdapter(AuthorizationCodeGrantSiteAdapter):
 
     CONFIRMATION_TEMPLATE = """
 <html>
-    <head><title>OAuth2 Authorization</title></head>
+    <head>
+        <title>OAuth2 Authorization</title>
+        <style>
+        input[type="submit"] {
+            font-size: 1.17em; /* probably ~h3 */
+            border: 0;
+            outline: 0;
+            color: white;
+            margin: 5px;
+            padding: 20px 100px;
+            width: 100%;
+            background: DodgerBlue;
+            box-shadow: none;
+            border-radius: 0px;
+        }
+        </style>
+    </head>
     <body>
-        <p>Do you want to allow Google Assistant access?</p>
+        <h3>Do you want to allow Google Assistant access?</h3>
 
         <form method="GET" action="{{ url }}">
             <input type="hidden" name="scope" value="{{ scope }}" />

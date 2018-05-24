@@ -133,6 +133,13 @@ For longer-term testing:
  * Wait a few hours for it to deploy.
  * If you make changes to DialogFlow, then you'll want to submit another alpha
    release to update it.
+ * Open the opt-in link on your phone, e.g. in Firefox. However, if you just
+   click "Send to device" it'll probably ask you to try it but will then say
+   "Sorry, I couldn't find that." You need to first open it in Google
+   Assistant, which in Firefox can be done by clicking the little android icon
+   in the address bar. Then scroll down to the alpha test message and click
+   "I'm in." At that point you should be able to use the alpha release,
+   e.g. by saying "talk to linux control" in the Google Assistant.
 
 ## Raspberry Pi Setup
 For this example, I'll be showing how to set it up on a Raspberry Pi running
